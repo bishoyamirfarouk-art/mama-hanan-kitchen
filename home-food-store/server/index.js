@@ -154,7 +154,8 @@ const settingsSchema = new mongoose.Schema({
   heroImage: { type: String, default: '/assets/brand/hero-home.webp' },
   storeLogo: { type: String, default: '/assets/brand/logo-horizontal.png' },
   whatsappNumber: { type: String, default: '' },
-  phoneNumber: { type: String, default: '' },
+  whatsappGroupUrl: { type: String, default: 'https://chat.whatsapp.com/KNTdkIdvpmAE4xasykWImf?s=sh&p=a&mlu=0&ilr=4' },
+  phoneNumber: { type: String, default: '01211377826' },
   address: { type: String, default: '' },
   googleMapsUrl: { type: String, default: '' },
   openingHours: { type: String, default: '' },
@@ -212,6 +213,7 @@ const analyticsSchema = new mongoose.Schema({
   totalVisits: { type: Number, default: 0 },
   productViews: { type: Object, default: {} },
   cartAdds: { type: Object, default: {} },
+  pageVisits: { type: Object, default: {} },
   orderStarts: { type: Number, default: 0 },
   whatsappOpens: { type: Number, default: 0 },
   dailyVisits: { type: Object, default: {} },
@@ -233,7 +235,9 @@ const BRAND_DEFAULTS = Object.freeze({
   heroTitle: 'أكل بيتي بطعم زمان',
   heroSubtitle: 'وصفات أصيلة، مكونات طازة، وأكل بيتعمل مخصوص علشان يوصلك بنفس إحساس لمة البيت.',
   heroImage: '/assets/brand/hero-home.webp',
-  storeLogo: '/assets/brand/logo-horizontal.png'
+  storeLogo: '/assets/brand/logo-horizontal.png',
+  phoneNumber: '01211377826',
+  whatsappGroupUrl: 'https://chat.whatsapp.com/KNTdkIdvpmAE4xasykWImf?s=sh&p=a&mlu=0&ilr=4'
 });
 
 async function initAdminFromEnv() {
@@ -268,6 +272,8 @@ async function ensureInitialContent() {
     if (!settings.heroSubtitle || settings.heroSubtitle.includes('أكل بيتي طازة يوميًا')) update.heroSubtitle = BRAND_DEFAULTS.heroSubtitle;
     if (!settings.heroImage || settings.heroImage === '/assets/food/meal.svg') update.heroImage = BRAND_DEFAULTS.heroImage;
     if (!settings.storeLogo || settings.storeLogo === '/assets/food/logo.svg') update.storeLogo = BRAND_DEFAULTS.storeLogo;
+    if (!settings.phoneNumber) update.phoneNumber = BRAND_DEFAULTS.phoneNumber;
+    if (!settings.whatsappGroupUrl) update.whatsappGroupUrl = BRAND_DEFAULTS.whatsappGroupUrl;
     if (Object.keys(update).length) {
       update.updatedAt = new Date();
       await Settings.updateOne({ _id: settings._id }, { $set: update });
@@ -376,7 +382,7 @@ app.get('/api/auth/me', auth, (req, res) => res.json({ username: req.user.userna
 
 app.get('/api/settings', api(async (req, res) => res.json(await getSettings())));
 app.put('/api/settings', auth, api(async (req, res) => {
-  const allowed = ['storeName','tagline','heroTitle','heroSubtitle','heroImage','storeLogo','whatsappNumber','phoneNumber','address','googleMapsUrl','openingHours','facebookUrl','instagramUrl','tiktokUrl','deliveryEnabled','pickupEnabled','deliveryFee','minimumOrder','currency'];
+  const allowed = ['storeName','tagline','heroTitle','heroSubtitle','heroImage','storeLogo','whatsappNumber','whatsappGroupUrl','phoneNumber','address','googleMapsUrl','openingHours','facebookUrl','instagramUrl','tiktokUrl','deliveryEnabled','pickupEnabled','deliveryFee','minimumOrder','currency'];
   const update = {};
   for (const key of allowed) if (Object.prototype.hasOwnProperty.call(req.body, key)) update[key] = req.body[key];
   update.updatedAt = new Date();
@@ -520,29 +526,115 @@ app.put('/api/orders/:id', auth, api(async (req, res) => {
 app.post('/api/analytics/track', api(async (req, res) => {
   const type = cleanString(req.body.type, 40); const key = cleanString(req.body.key, 120);
   const today = new Date().toISOString().slice(0, 10);
-  const inc = {}; inc[`dailyVisits.${today}`] = type === 'visit' ? 1 : 0;
-  if (type === 'visit') inc.totalVisits = 1;
-  if (type === 'product_view' && key) inc[`productViews.${key.replace(/\./g, '_')}`] = 1;
-  if (type === 'cart_add' && key) inc[`cartAdds.${key.replace(/\./g, '_')}`] = 1;
+  const inc = {};
+  if (type === 'visit') {
+    inc.totalVisits = 1;
+    inc[`dailyVisits.${today}`] = 1;
+    if (key) inc[`pageVisits.${key.replace(/[.$]/g, '_')}`] = 1;
+  }
+  if (type === 'product_view' && key) inc[`productViews.${key.replace(/[.$]/g, '_')}`] = 1;
+  if (type === 'cart_add' && key) inc[`cartAdds.${key.replace(/[.$]/g, '_')}`] = 1;
   if (type === 'order_start') inc.orderStarts = 1;
   if (type === 'whatsapp_open') inc.whatsappOpens = 1;
-  await Analytics.findOneAndUpdate({ key: 'main' }, { $inc: inc, $set: { updatedAt: new Date() } }, { upsert: true });
+  if (Object.keys(inc).length) await Analytics.findOneAndUpdate({ key: 'main' }, { $inc: inc, $set: { updatedAt: new Date() } }, { upsert: true, setDefaultsOnInsert: true });
   res.json({ ok: true });
 }));
 app.get('/api/analytics', auth, api(async (req, res) => {
   res.json(await Analytics.findOne({ key: 'main' }).lean() || { key: 'main' });
 }));
 
+
+app.get('/api/reports/summary', auth, api(async (req, res) => {
+  const daysRaw = Number(req.query.days || 30);
+  const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 3650) : 30;
+  const since = new Date(Date.now() - days * 86400000);
+  const analytics = await Analytics.findOne({ key: 'main' }).lean() || {};
+  const orders = await Order.find({ createdAt: { $gte: since } }).sort({ createdAt: -1 }).lean();
+  const validOrders = orders.filter(o => o.status !== 'cancelled');
+  const revenue = validOrders.reduce((sum,o)=>sum+Number(o.total||0),0);
+  const deliveredRevenue = orders.filter(o=>o.status==='delivered').reduce((sum,o)=>sum+Number(o.total||0),0);
+  const statuses = {};
+  for (const o of orders) statuses[o.status] = (statuses[o.status]||0)+1;
+  const itemMap = new Map();
+  for (const o of validOrders) for (const i of (o.items||[])) {
+    const name = i.title || 'بدون اسم';
+    const cur = itemMap.get(name) || { title:name, quantity:0, revenue:0 };
+    cur.quantity += Number(i.quantity||0); cur.revenue += Number(i.lineTotal||0); itemMap.set(name,cur);
+  }
+  const topOrdered = [...itemMap.values()].sort((a,b)=>b.quantity-a.quantity).slice(0,12);
+  const topMap = obj => Object.entries(obj||{}).map(([title,count])=>({title, count:Number(count||0)})).sort((a,b)=>b.count-a.count).slice(0,12);
+  const dailyVisits = Object.entries(analytics.dailyVisits||{}).filter(([date])=>new Date(date+'T00:00:00Z')>=since).sort(([a],[b])=>a.localeCompare(b)).map(([date,count])=>({date,count:Number(count||0)}));
+  res.json({
+    periodDays: days,
+    generatedAt: new Date().toISOString(),
+    metrics: {
+      totalVisits: Number(analytics.totalVisits||0),
+      periodVisits: dailyVisits.reduce((sum,d)=>sum+d.count,0),
+      cartAdds: Object.values(analytics.cartAdds||{}).reduce((sum,n)=>sum+Number(n||0),0),
+      orderStarts: Number(analytics.orderStarts||0),
+      whatsappOpens: Number(analytics.whatsappOpens||0),
+      orders: orders.length,
+      validOrders: validOrders.length,
+      revenue,
+      deliveredRevenue,
+      averageOrder: validOrders.length ? revenue/validOrders.length : 0
+    },
+    statuses,
+    topViews: topMap(analytics.productViews),
+    topCartAdds: topMap(analytics.cartAdds),
+    pageVisits: topMap(analytics.pageVisits),
+    topOrdered,
+    dailyVisits
+  });
+}));
+
 app.get('/api/admin/dashboard', auth, api(async (req, res) => {
   const [products, categories, gallery, orders, newOrders, latestOrder] = await Promise.all([
     Product.countDocuments(), Category.countDocuments(), Gallery.countDocuments(), Order.countDocuments(), Order.countDocuments({ status: 'new' }), Order.findOne().sort({ createdAt: -1 }).lean()
   ]);
-  res.json({ products, categories, gallery, orders, newOrders, latestOrder, cloud: { database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected', cloudinary: hasCloudinary ? 'configured' : 'not_configured', environment: process.env.VERCEL ? 'production' : 'development' } });
+  res.json({ products, categories, gallery, orders, newOrders, latestOrder, cloud: { database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected', cloudinary: hasCloudinary ? 'configured' : 'not_configured', pos: process.env.POS_API_KEY ? 'ready' : 'needs_key', environment: process.env.VERCEL ? 'production' : 'development' } });
+}));
+
+
+function posAuth(req, res, next) {
+  const configured = String(process.env.POS_API_KEY || '');
+  if (!configured) return res.status(503).json({ error: 'POS integration is not configured' });
+  const supplied = String(req.headers['x-pos-key'] || '').trim() || String(req.headers.authorization || '').replace(/^Bearer\s+/i,'').trim();
+  if (!supplied) return res.status(401).json({ error: 'POS authentication required' });
+  const a=Buffer.from(configured), b=Buffer.from(supplied);
+  if (a.length!==b.length || !crypto.timingSafeEqual(a,b)) return res.status(401).json({ error: 'Invalid POS key' });
+  next();
+}
+
+app.get('/api/pos/status', auth, (req,res)=>res.json({ configured:Boolean(process.env.POS_API_KEY), apiVersion:'v1', endpoints:['/api/pos/catalog','/api/pos/sync','/api/pos/orders/:id/status'] }));
+app.get('/api/pos/catalog', posAuth, api(async (req,res)=>{
+  const [products,categories,settings]=await Promise.all([
+    Product.find({ isHidden:false }).sort({sortOrder:1,title:1}).lean(),
+    Category.find({isActive:true}).sort({sortOrder:1,name:1}).lean(),
+    getSettings()
+  ]);
+  res.json({ apiVersion:'v1', generatedAt:new Date().toISOString(), store:{ name:settings.storeName, currency:settings.currency }, categories, products });
+}));
+app.get('/api/pos/sync', posAuth, api(async (req,res)=>{
+  const since = req.query.since && !Number.isNaN(Date.parse(req.query.since)) ? new Date(req.query.since) : new Date(0);
+  const [products,orders]=await Promise.all([
+    Product.find({ updatedAt:{ $gt:since } }).sort({updatedAt:1}).lean(),
+    Order.find({ updatedAt:{ $gt:since } }).sort({updatedAt:1}).lean()
+  ]);
+  res.json({ apiVersion:'v1', serverTime:new Date().toISOString(), since:since.toISOString(), products, orders });
+}));
+app.patch('/api/pos/orders/:id/status', posAuth, api(async (req,res)=>{
+  const allowedStatuses=['new','contacted','preparing','out_for_delivery','delivered','cancelled'];
+  if(!allowedStatuses.includes(req.body.status)) return res.status(400).json({error:'Invalid order status'});
+  const doc=await Order.findByIdAndUpdate(req.params.id,{status:req.body.status,updatedAt:new Date()},{new:true});
+  if(!doc) return res.status(404).json({error:'Order not found'});
+  await logActivity('pos_order_status', `${doc.orderNumber} -> ${req.body.status}`, 'pos');
+  res.json(doc);
 }));
 
 app.get('/api/backup', auth, api(async (req, res) => {
-  const [products,categories,gallery,settings,orders,reviews] = await Promise.all([Product.find().lean(),Category.find().lean(),Gallery.find().lean(),Settings.find().lean(),Order.find().lean(),Review.find().lean()]);
-  res.json({ version: 2, exportedAt: new Date().toISOString(), data: { products,categories,gallery,settings,orders,reviews } });
+  const [products,categories,gallery,settings,orders,reviews,analytics] = await Promise.all([Product.find().lean(),Category.find().lean(),Gallery.find().lean(),Settings.find().lean(),Order.find().lean(),Review.find().lean(),Analytics.find().lean()]);
+  res.json({ version: 3, exportedAt: new Date().toISOString(), data: { products,categories,gallery,settings,orders,reviews,analytics } });
 }));
 
 app.post('/api/restore', auth, api(async (req, res) => {
@@ -550,7 +642,7 @@ app.post('/api/restore', auth, api(async (req, res) => {
   if (!payload || typeof payload !== 'object') return res.status(400).json({ error: 'ملف النسخة الاحتياطية غير صالح' });
   const collections = [
     ['products', Product], ['categories', Category], ['gallery', Gallery],
-    ['settings', Settings], ['orders', Order], ['reviews', Review]
+    ['settings', Settings], ['orders', Order], ['reviews', Review], ['analytics', Analytics]
   ];
   for (const [key, Model] of collections) {
     if (!Array.isArray(payload[key])) continue;

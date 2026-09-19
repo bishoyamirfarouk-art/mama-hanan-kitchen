@@ -1,10 +1,10 @@
 (() => {
   'use strict';
-  const CFG = window.FOOD_STORE_CONFIG || { apiBase:'/api', storagePrefix:'mama_hanan_kitchen_v2' };
+  const CFG = window.FOOD_STORE_CONFIG || { apiBase:'/api', storagePrefix:'mama_hanan_kitchen_v3' };
   const API = CFG.apiBase || '/api';
-  const tokenKey = `${CFG.storagePrefix || 'mama_hanan_kitchen_v2'}_admin_token`;
-  const state = { token: localStorage.getItem(tokenKey) || '', me:null, products:[], categories:[], gallery:[], orders:[], settings:null };
-  const titles = { dashboard:'الرئيسية', products:'المنيو والوجبات', categories:'الأقسام', gallery:'معرض الصور', orders:'الطلبات', settings:'إعدادات المتجر', backup:'النسخ الاحتياطي' };
+  const tokenKey = `${CFG.storagePrefix || 'mama_hanan_kitchen_v3'}_admin_token`;
+  const state = { token: localStorage.getItem(tokenKey) || '', me:null, products:[], categories:[], gallery:[], orders:[], settings:null, reports:null, pos:null };
+  const titles = { dashboard:'الرئيسية', products:'المنيو والوجبات', categories:'الأقسام', gallery:'معرض الصور', orders:'الطلبات', reports:'التقارير والإحصائيات', pos:'ربط POS', settings:'إعدادات المتجر', backup:'النسخ الاحتياطي' };
   const statusLabel = { new:'جديد', contacted:'تم التواصل', preparing:'جاري التحضير', out_for_delivery:'خرج للتوصيل', delivered:'تم التسليم', cancelled:'ملغي' };
   const $=(s,e=document)=>e.querySelector(s); const $$=(s,e=document)=>[...e.querySelectorAll(s)];
   const esc=(v='')=>{const d=document.createElement('div');d.textContent=String(v);return d.innerHTML;};
@@ -43,7 +43,7 @@
     $$('[data-admin-section]').forEach(s=>s.classList.toggle('hide',s.dataset.adminSection!==name));
     $$('[data-section]').forEach(b=>b.classList.toggle('active',b.dataset.section===name));
     $('#sectionTitle').textContent=titles[name]||''; $('#adminSidebar').classList.remove('show');
-    if(name==='products')loadProducts(); if(name==='categories')loadCategories(); if(name==='gallery')loadGallery(); if(name==='orders')loadOrders(); if(name==='settings')renderSettings();
+    if(name==='products')loadProducts(); if(name==='categories')loadCategories(); if(name==='gallery')loadGallery(); if(name==='orders')loadOrders(); if(name==='reports')loadReports(); if(name==='pos')loadPosStatus(); if(name==='settings')renderSettings();
   }
 
   async function loadDashboard(){
@@ -51,7 +51,7 @@
       const d=await api('/admin/dashboard');
       $('#statsGrid').innerHTML=[['الوجبات',d.products,'🍽️'],['الأقسام',d.categories,'🗂️'],['صور المعرض',d.gallery,'📸'],['الطلبات',d.orders,'🧾']].map(x=>`<div class="stat"><small>${x[2]} ${x[0]}</small><strong>${x[1]}</strong></div>`).join('');
       $('#newOrdersBadge').textContent=d.newOrders?`(${d.newOrders})`:'';
-      $('#cloudStatus').innerHTML=`<div class="cloud-box"><span class="cloud-dot ${d.cloud.database==='connected'?'ok':''}"></span><strong>MongoDB</strong><div class="muted">${d.cloud.database}</div></div><div class="cloud-box"><span class="cloud-dot ${d.cloud.cloudinary==='configured'?'ok':''}"></span><strong>Cloudinary</strong><div class="muted">${d.cloud.cloudinary}</div></div><div class="cloud-box"><span class="cloud-dot ok"></span><strong>Environment</strong><div class="muted">${d.cloud.environment}</div></div>`;
+      $('#cloudStatus').innerHTML=`<div class="cloud-box"><span class="cloud-dot ${d.cloud.database==='connected'?'ok':''}"></span><strong>MongoDB</strong><div class="muted">${d.cloud.database}</div></div><div class="cloud-box"><span class="cloud-dot ${d.cloud.cloudinary==='configured'?'ok':''}"></span><strong>Cloudinary</strong><div class="muted">${d.cloud.cloudinary}</div></div><div class="cloud-box"><span class="cloud-dot ${d.cloud.pos==='ready'?'ok':''}"></span><strong>POS API</strong><div class="muted">${d.cloud.pos==='ready'?'جاهز':'بانتظار المفتاح'}</div></div><div class="cloud-box"><span class="cloud-dot ok"></span><strong>Environment</strong><div class="muted">${d.cloud.environment}</div></div>`;
       $('#latestOrderBox').innerHTML=d.latestOrder?`<strong>${esc(d.latestOrder.orderNumber)}</strong> — ${esc(d.latestOrder.customerName)} — ${money(d.latestOrder.total)} — <span class="status ${d.latestOrder.status}">${statusLabel[d.latestOrder.status]||d.latestOrder.status}</span>`:'لا يوجد طلبات بعد.';
     }catch(err){toast(err.message,'error');}
   }
@@ -67,7 +67,7 @@
     form.innerHTML=settingsField('اسم المتجر','storeName')+settingsField('الشعار النصي','tagline')+settingsField('عنوان الهيرو','heroTitle', 'text',true)+settingsField('وصف الهيرو','heroSubtitle','text',true)+
       `<div class="form-group" style="grid-column:1/-1"><label>صورة الهيرو</label><div style="display:flex;gap:8px"><input class="input" id="settingsHeroImageUrl" name="heroImage" value="${heroValue}"><label class="btn btn-ghost" style="white-space:nowrap">رفع صورة<input type="file" id="settingsHeroImageFile" accept="image/*" hidden></label></div><small class="muted">الصورة الحالية الافتراضية ضمن هوية مطبخ ماما حنان، ويمكن استبدالها من هنا.</small></div>`+
       `<div class="form-group" style="grid-column:1/-1"><label>لوجو الموقع</label><div style="display:flex;gap:8px"><input class="input" id="settingsLogoUrl" name="storeLogo" value="${logoValue}"><label class="btn btn-ghost" style="white-space:nowrap">رفع لوجو<input type="file" id="settingsLogoFile" accept="image/*" hidden></label></div></div>`+
-      settingsField('واتساب','whatsappNumber')+settingsField('الهاتف','phoneNumber')+settingsField('العنوان','address','text',true)+settingsField('Google Maps URL','googleMapsUrl','url',true)+settingsField('مواعيد العمل','openingHours')+settingsField('العملة','currency')+settingsField('رسوم التوصيل','deliveryFee','number')+settingsField('الحد الأدنى للطلب','minimumOrder','number')+settingsField('Facebook','facebookUrl','url')+settingsField('Instagram','instagramUrl','url')+settingsField('TikTok','tiktokUrl','url')+settingsField('التوصيل متاح','deliveryEnabled','checkbox')+settingsField('الاستلام متاح','pickupEnabled','checkbox')+'<button class="btn btn-primary" style="grid-column:1/-1" type="submit">حفظ الإعدادات</button>';
+      settingsField('رقم واتساب للطلبات','whatsappNumber')+settingsField('رابط جروب واتساب','whatsappGroupUrl','url',true)+settingsField('الهاتف','phoneNumber')+settingsField('العنوان','address','text',true)+settingsField('Google Maps URL','googleMapsUrl','url',true)+settingsField('مواعيد العمل','openingHours')+settingsField('العملة','currency')+settingsField('رسوم التوصيل','deliveryFee','number')+settingsField('الحد الأدنى للطلب','minimumOrder','number')+settingsField('Facebook','facebookUrl','url')+settingsField('Instagram','instagramUrl','url')+settingsField('TikTok','tiktokUrl','url')+settingsField('التوصيل متاح','deliveryEnabled','checkbox')+settingsField('الاستلام متاح','pickupEnabled','checkbox')+'<button class="btn btn-primary" style="grid-column:1/-1" type="submit">حفظ الإعدادات</button>';
     form.onsubmit=saveSettings;
     $('#settingsHeroImageFile').onchange=()=>uploadImage($('#settingsHeroImageFile'),$('#settingsHeroImageUrl'),null,'mama-hanan-kitchen/banners');
     $('#settingsLogoFile').onchange=()=>uploadImage($('#settingsLogoFile'),$('#settingsLogoUrl'),null,'mama-hanan-kitchen/branding');
@@ -112,11 +112,36 @@
   function renderOrders(){const tb=$('#ordersTable');tb.innerHTML=state.orders.length?state.orders.map(o=>`<tr><td><strong>${esc(o.orderNumber)}</strong><div class="muted">${(o.items||[]).length} صنف</div></td><td>${esc(o.customerName)}<div class="muted">${esc(o.customerPhone)}</div></td><td>${new Date(o.createdAt).toLocaleString('ar-EG')}</td><td>${money(o.total)}</td><td>${o.fulfillment==='pickup'?'استلام':'توصيل'}</td><td><select class="select" data-order-status="${o._id}" style="min-width:150px">${Object.entries(statusLabel).map(([k,v])=>`<option value="${k}" ${o.status===k?'selected':''}>${v}</option>`).join('')}</select></td></tr>`).join(''):'<tr><td colspan="6" class="muted">لا توجد طلبات.</td></tr>';$$('[data-order-status]',tb).forEach(s=>s.onchange=()=>updateOrderStatus(s.dataset.orderStatus,s.value));}
   async function updateOrderStatus(id,status){try{await api(`/orders/${id}`,{method:'PUT',body:JSON.stringify({status})});toast('تم تحديث حالة الطلب');await loadDashboard();}catch(err){toast(err.message,'error');}}
 
+  function reportListHtml(items,valueKey='count',suffix=''){
+    const list=Array.isArray(items)?items:[]; if(!list.length)return '<div class="muted">لا توجد بيانات كافية بعد.</div>';
+    const max=Math.max(...list.map(x=>Number(x[valueKey]||0)),1);
+    return list.map(x=>`<div class="report-row"><strong>${esc(x.title||'—')}</strong><div class="report-bar"><span style="width:${Math.max(4,Math.round(Number(x[valueKey]||0)/max*100))}%"></span></div><b>${Number(x[valueKey]||0).toLocaleString('ar-EG')}${suffix}</b></div>`).join('');
+  }
+  async function loadReports(){
+    try{
+      const days=Number($('#reportDays')?.value||30); state.reports=await api(`/reports/summary?days=${days}`); const r=state.reports,m=r.metrics||{};
+      $('#reportMetrics').innerHTML=[['زيارات الفترة',m.periodVisits||0,'👁️'],['الطلبات',m.orders||0,'🧾'],['إجمالي المبيعات',money(m.revenue||0),'💰'],['متوسط الطلب',money(m.averageOrder||0),'📊'],['إضافة للسلة',m.cartAdds||0,'🛒'],['فتح واتساب',m.whatsappOpens||0,'💬'],['بدء طلب',m.orderStarts||0,'🧺'],['مبيعات مسلمة',money(m.deliveredRevenue||0),'✅']].map(x=>`<div class="report-card"><div>${x[2]} ${x[0]}</div><div class="big">${x[1]}</div></div>`).join('');
+      $('#reportTopOrdered').innerHTML=reportListHtml(r.topOrdered,'quantity','');
+      $('#reportTopViews').innerHTML=reportListHtml(r.topViews);
+      $('#reportTopCart').innerHTML=reportListHtml(r.topCartAdds);
+      $('#reportPages').innerHTML=reportListHtml(r.pageVisits);
+      $('#reportDaily').innerHTML=(r.dailyVisits||[]).length?(r.dailyVisits||[]).slice().reverse().map(d=>`<tr><td>${esc(d.date)}</td><td>${Number(d.count||0).toLocaleString('ar-EG')}</td></tr>`).join(''):'<tr><td colspan="2" class="muted">لا توجد زيارات مسجلة في الفترة.</td></tr>';
+    }catch(err){toast(err.message,'error');}
+  }
+  function exportReportsCsv(){
+    const r=state.reports;if(!r)return toast('حدّث التقرير أولًا','error');const rows=[['المؤشر','القيمة'],['زيارات الفترة',r.metrics?.periodVisits||0],['الطلبات',r.metrics?.orders||0],['إجمالي المبيعات',r.metrics?.revenue||0],['متوسط الطلب',r.metrics?.averageOrder||0],['فتح واتساب',r.metrics?.whatsappOpens||0],[],['الأكثر طلبًا','الكمية','القيمة']];
+    (r.topOrdered||[]).forEach(x=>rows.push([x.title,x.quantity,x.revenue]));rows.push([],['الزيارات اليومية','العدد']);(r.dailyVisits||[]).forEach(x=>rows.push([x.date,x.count]));
+    const csv='\ufeff'+rows.map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`mama-hanan-report-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href);
+  }
+  async function loadPosStatus(){
+    try{state.pos=await api('/pos/status');const ready=!!state.pos.configured;$('#posStatusBox').innerHTML=`<div class="cloud-box"><span class="status-dot ${ready?'ok':'warn'}"></span><strong>حالة الربط</strong><div class="muted">${ready?'جاهز لاستقبال برنامج POS':'أضف POS_API_KEY في Vercel ثم اعمل Redeploy'}</div></div><div class="cloud-box"><span class="status-dot ok"></span><strong>API Version</strong><div class="muted">${esc(state.pos.apiVersion||'v1')}</div></div>`;}catch(err){toast(err.message,'error');}
+  }
+
   async function downloadBackup(){try{const data=await api('/backup');const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`mama-hanan-kitchen-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(a.href);toast('تم تجهيز النسخة الاحتياطية');}catch(err){toast(err.message,'error');}}
   async function restoreBackup(){const file=$('#restoreFile').files?.[0];if(!file)return toast('اختر ملف Backup أولًا','error');if(!confirm('سيتم استبدال بيانات المتجر الحالية بالنسخة المختارة. هل تريد المتابعة؟'))return;try{const payload=JSON.parse(await file.text());await api('/restore',{method:'POST',body:JSON.stringify(payload)});toast('تمت استعادة البيانات');await Promise.all([loadSettings(),loadDashboard(),loadProducts(),loadCategories(),loadGallery(),loadOrders()]);}catch(err){toast(err.message||'تعذر استعادة النسخة','error');}}
 
   function bind(){
-    $('#loginForm').onsubmit=login;$('#logoutBtn').onclick=()=>logout();$('#adminMenuBtn').onclick=()=>$('#adminSidebar').classList.toggle('show');$$('[data-section]').forEach(b=>b.onclick=()=>switchSection(b.dataset.section));$('#refreshDashboard').onclick=loadDashboard;$('#newProductBtn').onclick=()=>openProductForm();$('#productForm').onsubmit=saveProduct;$('#addVariantBtn').onclick=()=>addVariant();$('#newCategoryBtn').onclick=()=>openCategoryForm();$('#categoryForm').onsubmit=saveCategory;$('#newGalleryBtn').onclick=()=>openGalleryForm();$('#galleryForm').onsubmit=saveGallery;$('#orderStatusFilter').onchange=loadOrders;$('#downloadBackupBtn').onclick=downloadBackup;$('#restoreBackupBtn').onclick=restoreBackup;$$('[data-close-admin]').forEach(b=>b.onclick=()=>closeModal(b.dataset.closeAdmin));$$('.modal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)closeModal(m.id)}));
+    $('#loginForm').onsubmit=login;$('#logoutBtn').onclick=()=>logout();$('#adminMenuBtn').onclick=()=>$('#adminSidebar').classList.toggle('show');$$('[data-section]').forEach(b=>b.onclick=()=>switchSection(b.dataset.section));$('#refreshDashboard').onclick=loadDashboard;$('#newProductBtn').onclick=()=>openProductForm();$('#productForm').onsubmit=saveProduct;$('#addVariantBtn').onclick=()=>addVariant();$('#newCategoryBtn').onclick=()=>openCategoryForm();$('#categoryForm').onsubmit=saveCategory;$('#newGalleryBtn').onclick=()=>openGalleryForm();$('#galleryForm').onsubmit=saveGallery;$('#orderStatusFilter').onchange=loadOrders;$('#reportDays').onchange=loadReports;$('#refreshReports').onclick=loadReports;$('#exportReports').onclick=exportReportsCsv;$('#refreshPos').onclick=loadPosStatus;$('#downloadBackupBtn').onclick=downloadBackup;$('#restoreBackupBtn').onclick=restoreBackup;$$('[data-close-admin]').forEach(b=>b.onclick=()=>closeModal(b.dataset.closeAdmin));$$('.modal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)closeModal(m.id)}));
     $('#productImageFile').onchange=()=>uploadImage($('#productImageFile'),$('#productImageUrl'),$('#productForm').mainImagePublicId,'mama-hanan-kitchen/products');
     $('#categoryImageFile').onchange=()=>uploadImage($('#categoryImageFile'),$('#categoryImageUrl'),null,'mama-hanan-kitchen/categories');
     $('#galleryImageFile').onchange=()=>uploadImage($('#galleryImageFile'),$('#galleryImageUrl'),$('#galleryForm').cloudinaryPublicId,'mama-hanan-kitchen/gallery');

@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CFG = window.FOOD_STORE_CONFIG || { apiBase: '/api', storagePrefix: 'mama_hanan_kitchen_v2', currency: 'ج.م', enableDemoFallback: true };
+  const CFG = window.FOOD_STORE_CONFIG || { apiBase: '/api', storagePrefix: 'mama_hanan_kitchen_v3', currency: 'ج.م', enableDemoFallback: true };
   const API = CFG.apiBase || '/api';
   const storageKey = `${CFG.storagePrefix || 'mama_hanan_kitchen_v2'}_cart`;
 
@@ -9,7 +9,7 @@
     settings: {
       storeName: 'مطبخ ماما حنان', tagline: 'أكل بيتي بطعم زمان', heroTitle: 'أكل بيتي بطعم زمان',
       heroSubtitle: 'وصفات أصيلة، مكونات طازة، وأكل بيتعمل مخصوص علشان يوصلك بنفس إحساس لمة البيت.',
-      heroImage: '/assets/brand/hero-home.webp', storeLogo: '/assets/brand/logo-horizontal.png', whatsappNumber: '', phoneNumber: '', address: 'العنوان يضاف من لوحة التحكم', openingHours: 'مواعيد العمل تضاف من لوحة التحكم', currency: 'ج.م', deliveryFee: 0, deliveryEnabled: true, pickupEnabled: true
+      heroImage: '/assets/brand/hero-home.webp', storeLogo: '/assets/brand/logo-horizontal.png', whatsappNumber: '', whatsappGroupUrl: 'https://chat.whatsapp.com/KNTdkIdvpmAE4xasykWImf?s=sh&p=a&mlu=0&ilr=4', phoneNumber: '01211377826', address: '', openingHours: '', currency: 'ج.م', deliveryFee: 0, deliveryEnabled: true, pickupEnabled: true
     },
     categories: [
       { _id:'c1', name:'مشويات', slug:'grills', image:'/assets/food/grill.svg' },
@@ -156,7 +156,7 @@
   }
 
   function productCard(p) {
-    const variants = p.variants || [];
+    const variants = Array.isArray(p.variants) ? p.variants : [];
     const minPrice = variants.length ? Math.min(...variants.map(v=>Number(v.price))) : Number(p.price||0);
     const select = variants.length > 1 ? `<select class="select" data-variant-for="${esc(p._id)}">${variants.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} — ${money(v.price)}</option>`).join('')}</select>` : variants.length===1 ? `<div class="muted" style="font-size:.8rem">${esc(variants[0].name)}</div>` : '';
     return `<article class="product-card reveal">
@@ -167,7 +167,7 @@
   function bindProductCards(host) {
     qsa('[data-add]',host).forEach(btn => btn.onclick = () => {
       const p = state.products.find(x=>String(x._id)===btn.dataset.add); if (!p) return;
-      const select = qs(`[data-variant-for="${CSS.escape(String(p._id))}"]`, host);
+      const select = btn.closest('.product-card')?.querySelector('[data-variant-for]');
       addToCart(p, select?.value || p.variants?.[0]?.name || '');
     });
     qsa('[data-details]',host).forEach(btn => btn.onclick=()=>openProduct(btn.dataset.details));
@@ -176,7 +176,7 @@
   function openProduct(id) {
     const p = state.products.find(x=>String(x._id)===String(id)); if (!p) return;
     track('product_view', p.title);
-    const variants=(p.variants||[]);
+    const variants=Array.isArray(p.variants)?p.variants:[];
     qs('#productModalBody').innerHTML = `<div class="product-modal-grid"><img src="${esc(p.mainImage)}" alt="${esc(p.title)}"><div><span class="eyebrow">${esc(p.category)}</span><h2>${esc(p.title)}</h2><p class="muted">${esc(p.description||p.shortDescription||'')}</p>${variants.length?`<div class="form-group"><label>اختر الحجم</label><select class="select" id="modalVariant">${variants.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} — ${money(v.price)}</option>`).join('')}</select></div>`:`<div class="price" style="margin:14px 0">${money(p.price)}</div>`}<div class="product-meta" style="margin:14px 0">${p.preparationTime?`<span>⏱️ ${esc(p.preparationTime)}</span>`:''}${p.serves?`<span>👥 ${esc(p.serves)}</span>`:''}</div><button class="btn btn-primary btn-block" id="modalAdd" ${!p.isAvailable?'disabled':''}>${p.isAvailable?'أضف للطلب':'غير متاح حاليًا'}</button></div></div>`;
     qs('#modalAdd')?.addEventListener('click',()=>{addToCart(p,qs('#modalVariant')?.value||variants[0]?.name||'');closeModal('productModal');});
     openModal('productModal');
@@ -209,9 +209,9 @@
       const phone=String(order.whatsappNumber||state.settings.whatsappNumber||'').replace(/\D/g,'');
       state.cart=[]; saveCart(); closeModal('checkoutModal'); toast(`تم تسجيل الطلب ${order.orderNumber}`);
       if(phone){ track('whatsapp_open'); window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`,'_blank','noopener'); }
-      else { navigator.clipboard?.writeText(message); toast('الطلب اتسجل. أضف رقم واتساب من لوحة التحكم.'); }
+      else { toast('تم تسجيل طلبك بنجاح وسنتواصل معك على رقم الهاتف المسجل.'); }
     } catch(err) { toast(err.message || 'تعذر تسجيل الطلب','error'); }
-    finally { if(btn){btn.disabled=false;btn.textContent='تسجيل الطلب وفتحه على واتساب';} }
+    finally { if(btn){btn.disabled=false;btn.textContent=String(state.settings.whatsappNumber||'').replace(/\D/g,'')?'تسجيل الطلب وفتحه على واتساب':'تأكيد الطلب';} }
   }
 
   function galleryCard(item, index) { return `<figure class="gallery-item reveal" data-gallery-index="${index}"><img loading="lazy" src="${esc(item.image)}" alt="${esc(item.title||'صورة وجبة')}"><figcaption class="gallery-caption">${esc(item.title||item.category||'')}</figcaption></figure>`; }
@@ -225,23 +225,45 @@
   function moveLightbox(delta){ if(!state.galleryVisible.length)return; state.lightboxIndex=(state.lightboxIndex+delta+state.galleryVisible.length)%state.galleryVisible.length;updateLightbox(); }
 
   function applySettings() {
-    const s=state.settings;
-    qsa('[data-store-name]').forEach(el=>el.textContent=s.storeName||CFG.fallbackStoreName||'مطبخ ماما حنان');
+    const s=state.settings || {};
+    const storeName=s.storeName||CFG.fallbackStoreName||'مطبخ ماما حنان';
+    qsa('[data-store-name]').forEach(el=>el.textContent=storeName);
     qsa('[data-store-logo]').forEach(el=>el.src=s.storeLogo||'/assets/brand/logo-horizontal.png');
     qsa('[data-tagline]').forEach(el=>el.textContent=s.tagline||'أكل بيتي بطعم زمان');
-    qsa('[data-address]').forEach(el=>el.textContent=s.address||'العنوان يضاف من لوحة التحكم');
-    qsa('[data-phone]').forEach(el=>el.textContent=s.phoneNumber||'رقم الهاتف يضاف من لوحة التحكم');
-    qsa('[data-hours]').forEach(el=>el.textContent=s.openingHours||'مواعيد العمل تضاف من لوحة التحكم');
+
+    const toggleText=(selector,value)=>qsa(selector).forEach(el=>{const has=Boolean(String(value||'').trim());el.hidden=!has;if(has)el.textContent=value;});
+    toggleText('[data-address]',s.address);
+    toggleText('[data-hours]',s.openingHours);
+    qsa('[data-phone]').forEach(el=>el.textContent=s.phoneNumber||'');
+    qsa('[data-phone-link]').forEach(a=>{const has=Boolean(String(s.phoneNumber||'').trim());a.hidden=!has;if(has)a.href=`tel:${String(s.phoneNumber).replace(/[^+\d]/g,'')}`;});
+    qsa('[data-whatsapp-group]').forEach(a=>{const has=Boolean(String(s.whatsappGroupUrl||'').trim());a.hidden=!has;if(has)a.href=s.whatsappGroupUrl;});
     qsa('[data-year]').forEach(el=>el.textContent=new Date().getFullYear());
+
     if(qs('[data-hero-title]')) qs('[data-hero-title]').textContent=s.heroTitle||'أكل بيتي بطعم زمان';
     if(qs('[data-hero-subtitle]')) qs('[data-hero-subtitle]').textContent=s.heroSubtitle||'';
     qsa('[data-hero-image]').forEach(img=>{img.src=s.heroImage||'/assets/brand/hero-home.webp';});
-    if(qs('[data-hero-bg]') && s.heroImage) qs('[data-hero-bg]').style.backgroundImage=`linear-gradient(90deg,rgba(23,19,17,.98) 12%,rgba(23,19,17,.83) 48%,rgba(23,19,17,.36) 100%),url("${s.heroImage.replace(/"/g,'')}")`;
+    if(qs('[data-hero-bg]') && s.heroImage) qs('[data-hero-bg]').style.backgroundImage=`linear-gradient(90deg,rgba(23,19,17,.98) 12%,rgba(23,19,17,.83) 48%,rgba(23,19,17,.36) 100%),url("${String(s.heroImage).replace(/"/g,'')}")`;
+
     const phone=String(s.whatsappNumber||'').replace(/\D/g,'');
-    qsa('[data-whatsapp-link]').forEach(a=>{a.href=phone?`https://wa.me/${phone}`:'#';a.target=phone?'_blank':'_self';if(!phone)a.onclick=(e)=>{e.preventDefault();toast('رقم واتساب لسه ما اتضافش من لوحة التحكم','error');};});
-    const socials=qs('#socialLinks'); if(socials){ socials.innerHTML=[['f',s.facebookUrl],['◎',s.instagramUrl],['♪',s.tiktokUrl]].filter(x=>x[1]).map(x=>`<a href="${esc(x[1])}" target="_blank" rel="noopener">${x[0]}</a>`).join(''); }
-    document.title=document.title.replace('مطبخ ماما حنان',s.storeName||'مطبخ ماما حنان');
-    let ld=qs('#storeStructuredData'); if(!ld){ld=document.createElement('script');ld.id='storeStructuredData';ld.type='application/ld+json';document.head.appendChild(ld);} ld.textContent=JSON.stringify({'@context':'https://schema.org','@type':'FoodEstablishment',name:s.storeName||'مطبخ ماما حنان',telephone:s.phoneNumber||undefined,address:s.address||undefined,openingHours:s.openingHours||undefined,url:location.origin,image:s.heroImage?new URL(s.heroImage,location.origin).href:undefined});
+    qsa('[data-whatsapp-link]').forEach(a=>{
+      if(phone){a.hidden=false;a.href=`https://wa.me/${phone}`;a.target='_blank';a.rel='noopener';a.onclick=null;}
+      else {a.hidden=true;a.removeAttribute('href');a.onclick=null;}
+    });
+    const checkoutSubmit=qs('#checkoutForm button[type="submit"]');
+    if(checkoutSubmit) checkoutSubmit.textContent=phone?'تسجيل الطلب وفتحه على واتساب':'تأكيد الطلب';
+
+    const socials=qs('#socialLinks');
+    if(socials){
+      const links=[
+        ['فيسبوك',s.facebookUrl,'f'],
+        ['إنستجرام',s.instagramUrl,'◎'],
+        ['تيك توك',s.tiktokUrl,'♪'],
+        ['جروب واتساب',s.whatsappGroupUrl,'💬']
+      ].filter(x=>x[1]);
+      socials.innerHTML=links.map(([label,url,icon])=>`<a href="${esc(url)}" target="_blank" rel="noopener" aria-label="${esc(label)}" title="${esc(label)}">${icon}</a>`).join('');
+    }
+    document.title=document.title.replace('مطبخ ماما حنان',storeName);
+    let ld=qs('#storeStructuredData'); if(!ld){ld=document.createElement('script');ld.id='storeStructuredData';ld.type='application/ld+json';document.head.appendChild(ld);} ld.textContent=JSON.stringify({'@context':'https://schema.org','@type':'FoodEstablishment',name:storeName,telephone:s.phoneNumber||undefined,address:s.address||undefined,openingHours:s.openingHours||undefined,url:location.origin,image:s.heroImage?new URL(s.heroImage,location.origin).href:undefined});
   }
 
   function renderHome() {
@@ -255,20 +277,33 @@
   }
 
   function renderMenu() {
-    const filterHost=qs('#menuFilters'); if(!filterHost)return;
-    let current=new URLSearchParams(location.search).get('category')||'الكل';
-    const categories=['الكل',...new Set(state.categories.map(c=>c.name))];
-    filterHost.innerHTML=categories.map(c=>`<button class="filter-btn ${c===current?'active':''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('');
-    const draw=()=>{
-      let list=[...state.products].filter(p=>!p.isHidden);
-      const q=(qs('#menuSearch')?.value||'').trim().toLowerCase(); const sort=qs('#menuSort')?.value||'default';
-      if(current!=='الكل')list=list.filter(p=>p.category===current);
-      if(q)list=list.filter(p=>`${p.title} ${p.shortDescription||''}`.toLowerCase().includes(q));
-      if(sort==='priceAsc')list.sort((a,b)=>Number(a.price)-Number(b.price));if(sort==='priceDesc')list.sort((a,b)=>Number(b.price)-Number(a.price));if(sort==='name')list.sort((a,b)=>a.title.localeCompare(b.title,'ar'));
-      const host=qs('#menuProducts');host.innerHTML=list.length?list.map(productCard).join(''):'<div class="empty" style="grid-column:1/-1">مفيش أصناف مطابقة للبحث.</div>';bindProductCards(host);
-    };
-    qsa('[data-cat]',filterHost).forEach(b=>b.onclick=()=>{current=b.dataset.cat;qsa('[data-cat]',filterHost).forEach(x=>x.classList.toggle('active',x===b));draw();});
-    qs('#menuSearch')?.addEventListener('input',draw);qs('#menuSort')?.addEventListener('change',draw);draw();
+    const filterHost=qs('#menuFilters'), host=qs('#menuProducts');
+    if(!filterHost||!host) return;
+    try {
+      let current=new URLSearchParams(location.search).get('category')||'الكل';
+      const categoryNames=(Array.isArray(state.categories)?state.categories:[]).map(c=>String(c?.name||'').trim()).filter(Boolean);
+      const categories=['الكل',...new Set(categoryNames)];
+      if(current!=='الكل'&&!categories.includes(current)) current='الكل';
+      filterHost.innerHTML=categories.map(c=>`<button class="filter-btn ${c===current?'active':''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('');
+      const draw=()=>{
+        let list=(Array.isArray(state.products)?state.products:[]).filter(p=>p&&!p.isHidden);
+        const q=(qs('#menuSearch')?.value||'').trim().toLowerCase(); const sort=qs('#menuSort')?.value||'default';
+        if(current!=='الكل') list=list.filter(p=>String(p.category||'')===current);
+        if(q) list=list.filter(p=>`${p.title||''} ${p.shortDescription||''}`.toLowerCase().includes(q));
+        if(sort==='priceAsc')list.sort((a,b)=>Number(a.price||0)-Number(b.price||0));
+        if(sort==='priceDesc')list.sort((a,b)=>Number(b.price||0)-Number(a.price||0));
+        if(sort==='name')list.sort((a,b)=>String(a.title||'').localeCompare(String(b.title||''),'ar'));
+        host.innerHTML=list.length?list.map(productCard).join(''):'<div class="empty" style="grid-column:1/-1">لا توجد أصناف مطابقة حاليًا.</div>';
+        bindProductCards(host);
+      };
+      qsa('[data-cat]',filterHost).forEach(b=>b.onclick=()=>{current=b.dataset.cat;qsa('[data-cat]',filterHost).forEach(x=>x.classList.toggle('active',x===b));draw();});
+      qs('#menuSearch')?.addEventListener('input',draw);qs('#menuSort')?.addEventListener('change',draw);draw();
+    } catch(err) {
+      console.error('Menu render error:',err);
+      const fallback=(demo.products||[]).map(productCard).join('');
+      host.innerHTML=fallback||'<div class="empty" style="grid-column:1/-1">المنيو بيتحدث حاليًا، جرّب مرة تانية بعد قليل.</div>';
+      bindProductCards(host);
+    }
   }
 
   function renderGalleryPage() {

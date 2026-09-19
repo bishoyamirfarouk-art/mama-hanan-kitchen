@@ -116,3 +116,8 @@ linear-gradient(135deg,#3a2117,#1c1714)}
   .brand-lockup{min-width:118px;max-width:148px}
   .brand-lockup img{height:46px!important;max-width:145px}
 }
+
+/* v3: public polish, developer credit and reports */
+.developer-credit a{color:var(--primary,#E85D1F);font-weight:800;text-decoration:none}.developer-credit a:hover{text-decoration:underline}
+.footer-links [hidden],.mobile-bar [hidden],.nav-actions [hidden]{display:none!important}
+.report-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.report-card{background:var(--surface-2);border:1px solid var(--border);border-radius:18px;padding:18px}.report-card .big{font-size:1.75rem;font-weight:900;margin-top:8px}.report-list{display:grid;gap:10px}.report-row{display:grid;grid-template-columns:minmax(120px,1fr) 2fr auto;gap:10px;align-items:center}.report-bar{height:9px;border-radius:999px;background:rgba(255,255,255,.07);overflow:hidden}.report-bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--primary),#f59a4a);border-radius:999px}.integration-code{direction:ltr;text-align:left;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:#0f0c0b;border:1px solid var(--border);padding:10px 12px;border-radius:10px;overflow:auto}.status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-left:6px;background:#888}.status-dot.ok{background:#42c77a}.status-dot.warn{background:#f3ad38}@media(max-width:900px){.report-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.report-row{grid-template-columns:1fr auto}.report-bar{grid-column:1/-1}}@media(max-width:520px){.report-grid{grid-template-columns:1fr}}
