@@ -1,47 +1,55 @@
-# Home Food Store — مشروع مستقل
+# مطبخ ماما حنان
 
-متجر عربي RTL للأكل البيتي والمشويات، مبني كنسخة مستقلة تمامًا عن أي متجر سابق.
+متجر عربي RTL للأكل البيتي والمشويات باسم **مطبخ ماما حنان**، بهوية بصرية كاملة ونظام طلبات ولوحة إدارة مستقلة.
 
 ## التقنية
-- Frontend: HTML + Vanilla JavaScript + CSS mobile-first
+- Frontend: HTML + Vanilla JavaScript + CSS
 - Backend: Node.js + Express
-- Cloud database: MongoDB Atlas
+- Database: MongoDB Atlas
 - Images: Cloudinary
 - Hosting: Vercel
-- Authentication: JWT + `crypto.scrypt` hashing
+- Authentication: JWT + `crypto.scrypt`
 
-## عزل البيانات
-لا يحتوي المشروع على أي `.env` أو Git history أو MongoDB URI أو Cloudinary keys أو بيانات Admin من المشروع المصدر.
-يستخدم LocalStorage prefix جديد: `home_food_store_v1`، وService Worker cache جديد: `home-food-store-v1`.
+## الهوية المضافة
+الصور الرسمية موجودة داخل:
+`assets/brand/`
 
-أنشئ **MongoDB database/cluster connection جديد** و**Cloudinary credentials جديدة** قبل النشر. لا تعِد استخدام مفاتيح المشروع القديم إذا كان الهدف فصل البيانات تمامًا.
+وتشمل:
+- `logo-horizontal.png` للهيدر.
+- `logo-badge.png` للأقسام التعريفية والفوتر.
+- `logo-icon.png` للأيقونات والصفحات الداخلية.
+- `hero-home.webp` للواجهة الرئيسية.
+- `og-home.jpg` لمشاركة الروابط.
+- `icon-192.png` و`icon-512.png` للـPWA.
+- `favicon.png` للمتصفح.
+
+## قاعدة البيانات
+اسم قاعدة البيانات:
+`mama_hanan_kitchen`
+
+عند أول اتصال ناجح بقاعدة بيانات فارغة يتم تلقائيًا:
+- تثبيت هوية مطبخ ماما حنان في Settings.
+- إنشاء الأقسام الافتراضية.
+- إنشاء وجبات تجريبية قابلة للتعديل من لوحة الإدارة.
+- إنشاء عناصر مبدئية للمعرض.
+- إنشاء آراء مبدئية.
+- إنشاء أول Admin من Environment Variables.
 
 ## Environment Variables
-انسخ `.env.example` إلى `.env` للتشغيل المحلي فقط، ولا ترفع `.env` إلى Git:
-
 ```env
 PORT=3000
-MONGODB_URI=mongodb+srv://NEW_USER:NEW_PASSWORD@NEW_CLUSTER/.../
-MONGODB_DB_NAME=home_food_store
-CLOUDINARY_CLOUD_NAME=NEW_CLOUD
-CLOUDINARY_API_KEY=NEW_KEY
-CLOUDINARY_API_SECRET=NEW_SECRET
-JWT_SECRET=LONG_RANDOM_SECRET
-ADMIN_USERNAME=new_admin
-ADMIN_PASSWORD=STRONG_NEW_PASSWORD
-ALLOWED_ORIGINS=https://YOUR-NEW-DOMAIN.example
+MONGODB_URI=mongodb+srv://...
+MONGODB_DB_NAME=mama_hanan_kitchen
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+JWT_SECRET=
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=
+ALLOWED_ORIGINS=https://mama-hanan-kitchen.vercel.app
 ```
 
-`ADMIN_USERNAME` و`ADMIN_PASSWORD` ينشئان أول مدير فقط إذا لم يكن موجودًا. كلمة المرور تُخزّن Hash وليست نصًا صريحًا.
-
-## تشغيل محلي
-```bash
-npm install
-npm start
-```
-ثم افتح `http://localhost:3000`.
-
-إذا لم تضف MongoDB بعد، الواجهة العامة تعرض Demo placeholders للمعاينة، لكن لوحة الإدارة وعمليات الطلب السحابية تحتاج الربط الجديد.
+> لا ترفع `.env` أو أي Secrets إلى GitHub.
 
 ## الصفحات
 - `/` الرئيسية
@@ -53,47 +61,32 @@ npm start
 ## لوحة الإدارة
 تدعم:
 - Dashboard وحالة MongoDB/Cloudinary
-- CRUD للوجبات والأحجام والأسعار
-- CRUD للأقسام
-- Gallery + رفع Cloudinary
-- متابعة الطلبات والحالات
-- Store Settings
-- JSON Backup
+- إدارة الوجبات والأسعار والأحجام
+- إدارة الأقسام
+- Gallery + رفع الصور إلى Cloudinary
+- الطلبات وحالاتها
+- إعدادات المتجر
+- رفع/تغيير Hero واللوجو من الإعدادات
+- Backup / Restore
 
-## أهم API Endpoints
-Public:
-- `GET /api/health`
-- `GET /api/settings`
-- `GET /api/categories`
-- `GET /api/products`
-- `GET /api/gallery`
-- `GET /api/reviews`
-- `POST /api/orders`
-- `POST /api/analytics/track`
-
-Admin-protected:
-- `POST /api/auth/login`
-- `GET /api/auth/me`
-- `PUT /api/settings`
-- Category/Product/Gallery write endpoints
-- `POST /api/upload`
-- `GET/PUT /api/orders`
-- `GET /api/admin/dashboard`
-- `GET /api/analytics`
-- `GET /api/backup`
+## Cloudinary folders
+الرفع يتم إلى:
+- `mama-hanan-kitchen/products`
+- `mama-hanan-kitchen/categories`
+- `mama-hanan-kitchen/gallery`
+- `mama-hanan-kitchen/banners`
+- `mama-hanan-kitchen/branding`
 
 ## النشر على Vercel
-1. أنشئ Git repository جديدًا لهذا المشروع فقط.
-2. أنشئ Vercel Project جديدًا واربطه بالـrepo الجديد.
-3. أضف Environment Variables الجديدة في Vercel.
-4. Deploy.
-5. اربط دومين جديد أو subdomain من إعدادات Domains في مشروع Vercel الجديد.
+إذا كان الـRepository الحالي يحتوي المشروع داخل فولدر `home-food-store`:
+- Root Directory = `home-food-store`
 
-لا تربط المشروع الجديد بنفس MongoDB URI أو Cloudinary credentials الخاصة بالمتجر السابق إذا كنت تريد عزلًا كاملًا.
+بعد رفع التحديث:
+1. تأكد من Environment Variables.
+2. اعمل Redeploy.
+3. افتح `/api/health`.
+4. تأكد أن `database` = `connected` و`cloudinary` = `configured`.
+5. افتح `/admin` وأدخل بيانات `ADMIN_USERNAME` و`ADMIN_PASSWORD`.
 
-## قبل الإنتاج
-- استبدل صور SVG placeholders بصور الطعام الحقيقية من لوحة الإدارة.
-- أدخل اسم المتجر ورقم واتساب والعنوان والمواعيد والسوشيال من Settings.
-- أضف Categories وProducts الحقيقية.
-- اختبر إنشاء طلب، رسالة WhatsApp، ورفع الصور.
-- ضع `ALLOWED_ORIGINS` على الدومين النهائي بدل تركه فارغًا.
+## ملاحظة مهمة للـAdmin
+لو غيّرت `ADMIN_PASSWORD` في Vercel ثم عملت Redeploy، النظام سيزامن كلمة السر الجديدة مع حساب الـAdmin تلقائيًا.

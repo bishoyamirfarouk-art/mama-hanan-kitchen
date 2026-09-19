@@ -1,8 +1,8 @@
 {
-  "name": "home-food-store",
+  "name": "mama-hanan-kitchen",
   "version": "1.0.0",
   "private": true,
-  "description": "Arabic home food and grills store - independent cloud-ready project",
+  "description": "مطبخ ماما حنان - Arabic homemade food store with MongoDB Atlas, Cloudinary and Vercel",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node server/index.js",

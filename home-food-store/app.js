@@ -1,15 +1,15 @@
 (() => {
   'use strict';
 
-  const CFG = window.FOOD_STORE_CONFIG || { apiBase: '/api', storagePrefix: 'home_food_store_v1', currency: 'ج.م', enableDemoFallback: true };
+  const CFG = window.FOOD_STORE_CONFIG || { apiBase: '/api', storagePrefix: 'mama_hanan_kitchen_v2', currency: 'ج.م', enableDemoFallback: true };
   const API = CFG.apiBase || '/api';
-  const storageKey = `${CFG.storagePrefix || 'home_food_store_v1'}_cart`;
+  const storageKey = `${CFG.storagePrefix || 'mama_hanan_kitchen_v2'}_cart`;
 
   const demo = {
     settings: {
-      storeName: 'بيت ومشويات', tagline: 'طعم البيت... معمول بحب', heroTitle: 'طعم البيت... معمول بحب ❤️',
-      heroSubtitle: 'أكل بيتي طازة يوميًا، مشويات، محاشي، طواجن وعزومات تتعمل مخصوص ليك.',
-      heroImage: '/assets/food/meal.svg', storeLogo: '/assets/food/logo.svg', whatsappNumber: '', phoneNumber: '', address: 'العنوان يضاف من لوحة التحكم', openingHours: 'مواعيد العمل تضاف من لوحة التحكم', currency: 'ج.م', deliveryFee: 0, deliveryEnabled: true, pickupEnabled: true
+      storeName: 'مطبخ ماما حنان', tagline: 'أكل بيتي بطعم زمان', heroTitle: 'أكل بيتي بطعم زمان',
+      heroSubtitle: 'وصفات أصيلة، مكونات طازة، وأكل بيتعمل مخصوص علشان يوصلك بنفس إحساس لمة البيت.',
+      heroImage: '/assets/brand/hero-home.webp', storeLogo: '/assets/brand/logo-horizontal.png', whatsappNumber: '', phoneNumber: '', address: 'العنوان يضاف من لوحة التحكم', openingHours: 'مواعيد العمل تضاف من لوحة التحكم', currency: 'ج.م', deliveryFee: 0, deliveryEnabled: true, pickupEnabled: true
     },
     categories: [
       { _id:'c1', name:'مشويات', slug:'grills', image:'/assets/food/grill.svg' },
@@ -226,21 +226,22 @@
 
   function applySettings() {
     const s=state.settings;
-    qsa('[data-store-name]').forEach(el=>el.textContent=s.storeName||CFG.fallbackStoreName||'بيت ومشويات');
-    qsa('[data-store-logo]').forEach(el=>el.src=s.storeLogo||'/assets/food/logo.svg');
-    qsa('[data-tagline]').forEach(el=>el.textContent=s.tagline||'طعم البيت... معمول بحب');
+    qsa('[data-store-name]').forEach(el=>el.textContent=s.storeName||CFG.fallbackStoreName||'مطبخ ماما حنان');
+    qsa('[data-store-logo]').forEach(el=>el.src=s.storeLogo||'/assets/brand/logo-horizontal.png');
+    qsa('[data-tagline]').forEach(el=>el.textContent=s.tagline||'أكل بيتي بطعم زمان');
     qsa('[data-address]').forEach(el=>el.textContent=s.address||'العنوان يضاف من لوحة التحكم');
     qsa('[data-phone]').forEach(el=>el.textContent=s.phoneNumber||'رقم الهاتف يضاف من لوحة التحكم');
     qsa('[data-hours]').forEach(el=>el.textContent=s.openingHours||'مواعيد العمل تضاف من لوحة التحكم');
     qsa('[data-year]').forEach(el=>el.textContent=new Date().getFullYear());
-    if(qs('[data-hero-title]')) qs('[data-hero-title]').innerHTML=esc(s.heroTitle||'طعم البيت... معمول بحب ❤️');
+    if(qs('[data-hero-title]')) qs('[data-hero-title]').textContent=s.heroTitle||'أكل بيتي بطعم زمان';
     if(qs('[data-hero-subtitle]')) qs('[data-hero-subtitle]').textContent=s.heroSubtitle||'';
+    qsa('[data-hero-image]').forEach(img=>{img.src=s.heroImage||'/assets/brand/hero-home.webp';});
     if(qs('[data-hero-bg]') && s.heroImage) qs('[data-hero-bg]').style.backgroundImage=`linear-gradient(90deg,rgba(23,19,17,.98) 12%,rgba(23,19,17,.83) 48%,rgba(23,19,17,.36) 100%),url("${s.heroImage.replace(/"/g,'')}")`;
     const phone=String(s.whatsappNumber||'').replace(/\D/g,'');
     qsa('[data-whatsapp-link]').forEach(a=>{a.href=phone?`https://wa.me/${phone}`:'#';a.target=phone?'_blank':'_self';if(!phone)a.onclick=(e)=>{e.preventDefault();toast('رقم واتساب لسه ما اتضافش من لوحة التحكم','error');};});
     const socials=qs('#socialLinks'); if(socials){ socials.innerHTML=[['f',s.facebookUrl],['◎',s.instagramUrl],['♪',s.tiktokUrl]].filter(x=>x[1]).map(x=>`<a href="${esc(x[1])}" target="_blank" rel="noopener">${x[0]}</a>`).join(''); }
-    document.title=document.title.replace('بيت ومشويات',s.storeName||'بيت ومشويات');
-    let ld=qs('#storeStructuredData'); if(!ld){ld=document.createElement('script');ld.id='storeStructuredData';ld.type='application/ld+json';document.head.appendChild(ld);} ld.textContent=JSON.stringify({'@context':'https://schema.org','@type':'FoodEstablishment',name:s.storeName||'بيت ومشويات',telephone:s.phoneNumber||undefined,address:s.address||undefined,openingHours:s.openingHours||undefined,url:location.origin,image:s.heroImage?new URL(s.heroImage,location.origin).href:undefined});
+    document.title=document.title.replace('مطبخ ماما حنان',s.storeName||'مطبخ ماما حنان');
+    let ld=qs('#storeStructuredData'); if(!ld){ld=document.createElement('script');ld.id='storeStructuredData';ld.type='application/ld+json';document.head.appendChild(ld);} ld.textContent=JSON.stringify({'@context':'https://schema.org','@type':'FoodEstablishment',name:s.storeName||'مطبخ ماما حنان',telephone:s.phoneNumber||undefined,address:s.address||undefined,openingHours:s.openingHours||undefined,url:location.origin,image:s.heroImage?new URL(s.heroImage,location.origin).href:undefined});
   }
 
   function renderHome() {

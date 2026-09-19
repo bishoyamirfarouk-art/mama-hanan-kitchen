@@ -46,12 +46,13 @@ async function ensureDBConnection() {
   if (!connectionPromise) {
     connectionPromise = mongoose.connect(process.env.MONGODB_URI, {
       maxPoolSize: 5,
-      dbName: process.env.MONGODB_DB_NAME || 'home_food_store',
+      dbName: process.env.MONGODB_DB_NAME || 'mama_hanan_kitchen',
       serverSelectionTimeoutMS: 12000,
       socketTimeoutMS: 45000,
       connectTimeoutMS: 12000
     }).then(async () => {
       await initAdminFromEnv();
+      await ensureInitialContent();
     }).catch(err => {
       connectionPromise = null;
       throw err;
@@ -146,12 +147,12 @@ const Gallery = mongoose.models.Gallery || mongoose.model('Gallery', gallerySche
 
 const settingsSchema = new mongoose.Schema({
   key: { type: String, default: 'main', unique: true },
-  storeName: { type: String, default: 'بيت ومشويات' },
-  tagline: { type: String, default: 'طعم البيت... معمول بحب' },
-  heroTitle: { type: String, default: 'طعم البيت... معمول بحب ❤️' },
-  heroSubtitle: { type: String, default: 'أكل بيتي طازة يوميًا، مشويات، محاشي، طواجن وعزومات تتعمل مخصوص ليك.' },
-  heroImage: { type: String, default: '/assets/food/meal.svg' },
-  storeLogo: { type: String, default: '/assets/food/logo.svg' },
+  storeName: { type: String, default: 'مطبخ ماما حنان' },
+  tagline: { type: String, default: 'أكل بيتي بطعم زمان' },
+  heroTitle: { type: String, default: 'أكل بيتي بطعم زمان' },
+  heroSubtitle: { type: String, default: 'وصفات أصيلة، مكونات طازة، وأكل بيتعمل مخصوص علشان يوصلك بنفس إحساس لمة البيت.' },
+  heroImage: { type: String, default: '/assets/brand/hero-home.webp' },
+  storeLogo: { type: String, default: '/assets/brand/logo-horizontal.png' },
   whatsappNumber: { type: String, default: '' },
   phoneNumber: { type: String, default: '' },
   address: { type: String, default: '' },
@@ -226,6 +227,15 @@ const activityLogSchema = new mongoose.Schema({
 });
 const ActivityLog = mongoose.models.ActivityLog || mongoose.model('ActivityLog', activityLogSchema);
 
+const BRAND_DEFAULTS = Object.freeze({
+  storeName: 'مطبخ ماما حنان',
+  tagline: 'أكل بيتي بطعم زمان',
+  heroTitle: 'أكل بيتي بطعم زمان',
+  heroSubtitle: 'وصفات أصيلة، مكونات طازة، وأكل بيتعمل مخصوص علشان يوصلك بنفس إحساس لمة البيت.',
+  heroImage: '/assets/brand/hero-home.webp',
+  storeLogo: '/assets/brand/logo-horizontal.png'
+});
+
 async function initAdminFromEnv() {
   const username = cleanString(process.env.ADMIN_USERNAME, 80);
   const password = String(process.env.ADMIN_PASSWORD || '');
@@ -233,10 +243,86 @@ async function initAdminFromEnv() {
   const existing = await AdminUser.findOne({ username });
   if (!existing) {
     await AdminUser.create({ username, passwordHash: hashPassword(password), role: 'owner', permissions: ['all'] });
+    return;
+  }
+  // Environment Variables are the source of truth for the bootstrap admin.
+  // Changing ADMIN_PASSWORD in Vercel and redeploying updates this account safely.
+  if (!verifyPassword(password, existing.passwordHash)) {
+    existing.passwordHash = hashPassword(password);
+    existing.role = 'owner';
+    existing.permissions = ['all'];
+    existing.isActive = true;
+    await existing.save();
   }
 }
+
+async function ensureInitialContent() {
+  const settings = await Settings.findOne({ key: 'main' });
+  if (!settings) {
+    await Settings.create({ key: 'main', ...BRAND_DEFAULTS });
+  } else {
+    const update = {};
+    if (!settings.storeName || settings.storeName === 'بيت ومشويات') update.storeName = BRAND_DEFAULTS.storeName;
+    if (!settings.tagline || settings.tagline === 'طعم البيت... معمول بحب') update.tagline = BRAND_DEFAULTS.tagline;
+    if (!settings.heroTitle || settings.heroTitle.includes('طعم البيت')) update.heroTitle = BRAND_DEFAULTS.heroTitle;
+    if (!settings.heroSubtitle || settings.heroSubtitle.includes('أكل بيتي طازة يوميًا')) update.heroSubtitle = BRAND_DEFAULTS.heroSubtitle;
+    if (!settings.heroImage || settings.heroImage === '/assets/food/meal.svg') update.heroImage = BRAND_DEFAULTS.heroImage;
+    if (!settings.storeLogo || settings.storeLogo === '/assets/food/logo.svg') update.storeLogo = BRAND_DEFAULTS.storeLogo;
+    if (Object.keys(update).length) {
+      update.updatedAt = new Date();
+      await Settings.updateOne({ _id: settings._id }, { $set: update });
+    }
+  }
+
+  if (await Category.countDocuments() === 0) {
+    await Category.insertMany([
+      { name:'مشويات', slug:'grills', image:'/assets/food/grill.svg', sortOrder:1 },
+      { name:'محاشي', slug:'mahshi', image:'/assets/food/mahshi.svg', sortOrder:2 },
+      { name:'طواجن', slug:'tajin', image:'/assets/food/tajin.svg', sortOrder:3 },
+      { name:'أكل بيتي', slug:'home-food', image:'/assets/food/home.svg', sortOrder:4 },
+      { name:'مخبوزات', slug:'bakery', image:'/assets/food/bakery.svg', sortOrder:5 },
+      { name:'حلويات', slug:'dessert', image:'/assets/food/dessert.svg', sortOrder:6 }
+    ]);
+  }
+
+  if (await Product.countDocuments() === 0) {
+    await Product.insertMany([
+      { title:'مشويات مشكلة', slug:'mixed-grills', category:'مشويات', shortDescription:'تشكيلة مشويات بتتبيلة ماما حنان مع إضافات البيت.', mainImage:'/assets/food/grill.svg', price:220, oldPrice:250, offerLabel:'عرض اليوم', variants:[{name:'نصف كيلو',price:220},{name:'كيلو',price:420}], availableToday:true, featured:true, isAvailable:true, preparationTime:'45-60 دقيقة', serves:'2-4 أفراد', sortOrder:1 },
+      { title:'محشي مشكل', slug:'mixed-mahshi', category:'محاشي', shortDescription:'ورق عنب وكوسة وفلفل بخلطة بيتي ووصفة أصيلة.', mainImage:'/assets/food/mahshi.svg', price:160, variants:[{name:'نصف كيلو',price:160},{name:'كيلو',price:300}], availableToday:true, featured:true, isAvailable:true, preparationTime:'60 دقيقة', serves:'2-3 أفراد', sortOrder:2 },
+      { title:'طاجن لحمة بالخضار', slug:'meat-tajin', category:'طواجن', shortDescription:'طاجن لحمة بصوص غني وخضار طازة بطعم البيت.', mainImage:'/assets/food/tajin.svg', price:180, variants:[{name:'فرد',price:180},{name:'صينية كبيرة',price:520}], availableToday:true, featured:true, isAvailable:true, preparationTime:'50 دقيقة', serves:'1-4 أفراد', sortOrder:3 },
+      { title:'وجبة فراخ بيتي', slug:'home-chicken-meal', category:'أكل بيتي', shortDescription:'وجبة كاملة بفراخ وتتبيلة البيت وإضافات اليوم.', mainImage:'/assets/food/home.svg', price:145, variants:[{name:'فرد',price:145},{name:'وجبة عائلية',price:480}], availableToday:true, featured:true, isAvailable:true, preparationTime:'35-45 دقيقة', serves:'1-4 أفراد', sortOrder:4 },
+      { title:'فطير بيتي', slug:'home-feteer', category:'مخبوزات', shortDescription:'فطير طازة مناسب للفطار أو العزومات.', mainImage:'/assets/food/bakery.svg', price:120, variants:[{name:'قطعة',price:120}], availableToday:true, featured:false, isAvailable:true, preparationTime:'30 دقيقة', serves:'2 أفراد', sortOrder:5 },
+      { title:'حلو اليوم', slug:'dessert-of-the-day', category:'حلويات', shortDescription:'اختيار يومي من حلويات البيت.', mainImage:'/assets/food/dessert.svg', price:90, variants:[{name:'علبة',price:90},{name:'علبة كبيرة',price:160}], availableToday:true, featured:false, isAvailable:true, preparationTime:'حسب المتاح', sortOrder:6 }
+    ]);
+  }
+
+  if (await Gallery.countDocuments() === 0) {
+    await Gallery.insertMany([
+      { image:'/assets/food/gallery1.svg', title:'من أكل البيت', category:'أكل بيتي', sortOrder:1 },
+      { image:'/assets/food/mahshi.svg', title:'محاشي ماما حنان', category:'محاشي', sortOrder:2 },
+      { image:'/assets/food/grill.svg', title:'مشويات', category:'مشويات', sortOrder:3 },
+      { image:'/assets/food/tajin.svg', title:'طواجن', category:'طواجن', sortOrder:4 },
+      { image:'/assets/food/gallery2.svg', title:'تجهيز عزومات', category:'عزومات', sortOrder:5 },
+      { image:'/assets/food/dessert.svg', title:'حلويات البيت', category:'حلويات', sortOrder:6 }
+    ]);
+  }
+
+  if (await Review.countDocuments() === 0) {
+    await Review.insertMany([
+      { name:'عميلة ماما حنان', text:'الأكل وصل مرتب وساخن والطعم بيتي فعلًا.', rating:5, sortOrder:1 },
+      { name:'طلب عزومة', text:'الكميات كانت مناسبة والتجهيز منظم والطعم ممتاز.', rating:5, sortOrder:2 },
+      { name:'عميل متكرر', text:'سهولة الطلب ممتازة ومنيو اليوم واضحة جدًا.', rating:5, sortOrder:3 }
+    ]);
+  }
+}
+
 async function getSettings() {
-  return Settings.findOneAndUpdate({ key: 'main' }, { $setOnInsert: { key: 'main' } }, { new: true, upsert: true, setDefaultsOnInsert: true }).lean();
+  const doc = await Settings.findOneAndUpdate(
+    { key: 'main' },
+    { $setOnInsert: { key: 'main', ...BRAND_DEFAULTS } },
+    { new: true, upsert: true, setDefaultsOnInsert: true }
+  ).lean();
+  return doc;
 }
 async function logActivity(action, details, user = 'system') {
   try { await ActivityLog.create({ action, details, user }); } catch (_) {}
@@ -388,7 +474,7 @@ app.post('/api/upload', auth, api(async (req, res) => {
   const file = req.files?.image;
   if (!file) return res.status(400).json({ error: 'اختر صورة' });
   if (!/^image\//i.test(file.mimetype || '')) return res.status(400).json({ error: 'الملف يجب أن يكون صورة' });
-  const folder = cleanString(req.body.folder || 'food-store/misc', 100).replace(/[^a-zA-Z0-9/_-]/g, '');
+  const folder = cleanString(req.body.folder || 'mama-hanan-kitchen/misc', 100).replace(/[^a-zA-Z0-9/_-]/g, '');
   const result = await cloudinary.uploader.upload(file.tempFilePath, { folder, resource_type: 'image', transformation: [{ quality: 'auto', fetch_format: 'auto' }] });
   res.json({ url: result.secure_url, publicId: result.public_id, width: result.width, height: result.height });
 }));
@@ -416,7 +502,7 @@ app.post('/api/orders', api(async (req, res) => {
   const fulfillment = req.body.fulfillment === 'pickup' ? 'pickup' : 'delivery';
   const deliveryFee = fulfillment === 'delivery' && settings.deliveryEnabled ? Number(settings.deliveryFee || 0) : 0;
   if (Number(settings.minimumOrder || 0) > 0 && subtotal < Number(settings.minimumOrder)) return res.status(400).json({ error: `الحد الأدنى للطلب ${settings.minimumOrder} ${settings.currency}` });
-  const orderNumber = `FD-${Date.now().toString().slice(-8)}-${crypto.randomInt(10, 99)}`;
+  const orderNumber = `MH-${Date.now().toString().slice(-8)}-${crypto.randomInt(10, 99)}`;
   const doc = await Order.create({ orderNumber, customerName: cleanString(req.body.customerName, 120), customerPhone: cleanString(req.body.customerPhone, 50), customerAddress: cleanString(req.body.customerAddress, 300), area: cleanString(req.body.area, 120), notes: cleanString(req.body.notes, 700), fulfillment, items: safeItems, subtotal, deliveryFee, total: subtotal + deliveryFee });
   await logActivity('order_create', orderNumber, 'customer');
   res.status(201).json({ orderNumber: doc.orderNumber, subtotal: doc.subtotal, deliveryFee: doc.deliveryFee, total: doc.total, status: doc.status, whatsappNumber: settings.whatsappNumber, currency: settings.currency });
@@ -456,7 +542,7 @@ app.get('/api/admin/dashboard', auth, api(async (req, res) => {
 
 app.get('/api/backup', auth, api(async (req, res) => {
   const [products,categories,gallery,settings,orders,reviews] = await Promise.all([Product.find().lean(),Category.find().lean(),Gallery.find().lean(),Settings.find().lean(),Order.find().lean(),Review.find().lean()]);
-  res.json({ version: 1, exportedAt: new Date().toISOString(), data: { products,categories,gallery,settings,orders,reviews } });
+  res.json({ version: 2, exportedAt: new Date().toISOString(), data: { products,categories,gallery,settings,orders,reviews } });
 }));
 
 app.post('/api/restore', auth, api(async (req, res) => {
