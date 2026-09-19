@@ -282,36 +282,54 @@ async function ensureInitialContent() {
 
   if (await Category.countDocuments() === 0) {
     await Category.insertMany([
-      { name:'مشويات', slug:'grills', image:'/assets/food/grill.svg', sortOrder:1 },
-      { name:'محاشي', slug:'mahshi', image:'/assets/food/mahshi.svg', sortOrder:2 },
-      { name:'طواجن', slug:'tajin', image:'/assets/food/tajin.svg', sortOrder:3 },
-      { name:'أكل بيتي', slug:'home-food', image:'/assets/food/home.svg', sortOrder:4 },
-      { name:'مخبوزات', slug:'bakery', image:'/assets/food/bakery.svg', sortOrder:5 },
-      { name:'حلويات', slug:'dessert', image:'/assets/food/dessert.svg', sortOrder:6 }
+      { name:'مشويات', slug:'grills', image:'/assets/food/photos/grill.webp', sortOrder:1 },
+      { name:'محاشي', slug:'mahshi', image:'/assets/food/photos/mahshi.webp', sortOrder:2 },
+      { name:'طواجن', slug:'tajin', image:'/assets/food/photos/tajin.webp', sortOrder:3 },
+      { name:'أكل بيتي', slug:'home-food', image:'/assets/food/photos/chicken.webp', sortOrder:4 },
+      { name:'مخبوزات', slug:'bakery', image:'/assets/food/photos/feteer.webp', sortOrder:5 },
+      { name:'حلويات', slug:'dessert', image:'/assets/food/photos/dessert.webp', sortOrder:6 }
     ]);
   }
 
   if (await Product.countDocuments() === 0) {
     await Product.insertMany([
-      { title:'مشويات مشكلة', slug:'mixed-grills', category:'مشويات', shortDescription:'تشكيلة مشويات بتتبيلة ماما حنان مع إضافات البيت.', mainImage:'/assets/food/grill.svg', price:220, oldPrice:250, offerLabel:'عرض اليوم', variants:[{name:'نصف كيلو',price:220},{name:'كيلو',price:420}], availableToday:true, featured:true, isAvailable:true, preparationTime:'45-60 دقيقة', serves:'2-4 أفراد', sortOrder:1 },
-      { title:'محشي مشكل', slug:'mixed-mahshi', category:'محاشي', shortDescription:'ورق عنب وكوسة وفلفل بخلطة بيتي ووصفة أصيلة.', mainImage:'/assets/food/mahshi.svg', price:160, variants:[{name:'نصف كيلو',price:160},{name:'كيلو',price:300}], availableToday:true, featured:true, isAvailable:true, preparationTime:'60 دقيقة', serves:'2-3 أفراد', sortOrder:2 },
-      { title:'طاجن لحمة بالخضار', slug:'meat-tajin', category:'طواجن', shortDescription:'طاجن لحمة بصوص غني وخضار طازة بطعم البيت.', mainImage:'/assets/food/tajin.svg', price:180, variants:[{name:'فرد',price:180},{name:'صينية كبيرة',price:520}], availableToday:true, featured:true, isAvailable:true, preparationTime:'50 دقيقة', serves:'1-4 أفراد', sortOrder:3 },
-      { title:'وجبة فراخ بيتي', slug:'home-chicken-meal', category:'أكل بيتي', shortDescription:'وجبة كاملة بفراخ وتتبيلة البيت وإضافات اليوم.', mainImage:'/assets/food/home.svg', price:145, variants:[{name:'فرد',price:145},{name:'وجبة عائلية',price:480}], availableToday:true, featured:true, isAvailable:true, preparationTime:'35-45 دقيقة', serves:'1-4 أفراد', sortOrder:4 },
-      { title:'فطير بيتي', slug:'home-feteer', category:'مخبوزات', shortDescription:'فطير طازة مناسب للفطار أو العزومات.', mainImage:'/assets/food/bakery.svg', price:120, variants:[{name:'قطعة',price:120}], availableToday:true, featured:false, isAvailable:true, preparationTime:'30 دقيقة', serves:'2 أفراد', sortOrder:5 },
-      { title:'حلو اليوم', slug:'dessert-of-the-day', category:'حلويات', shortDescription:'اختيار يومي من حلويات البيت.', mainImage:'/assets/food/dessert.svg', price:90, variants:[{name:'علبة',price:90},{name:'علبة كبيرة',price:160}], availableToday:true, featured:false, isAvailable:true, preparationTime:'حسب المتاح', sortOrder:6 }
+      { title:'مشويات مشكلة', slug:'mixed-grills', category:'مشويات', shortDescription:'تشكيلة مشويات بتتبيلة ماما حنان مع إضافات البيت.', mainImage:'/assets/food/photos/grill.webp', price:220, oldPrice:250, offerLabel:'عرض اليوم', variants:[{name:'نصف كيلو',price:220},{name:'كيلو',price:420}], availableToday:true, featured:true, isAvailable:true, preparationTime:'45-60 دقيقة', serves:'2-4 أفراد', sortOrder:1 },
+      { title:'محشي مشكل', slug:'mixed-mahshi', category:'محاشي', shortDescription:'ورق عنب وكوسة وفلفل بخلطة بيتي ووصفة أصيلة.', mainImage:'/assets/food/photos/mahshi.webp', price:160, variants:[{name:'نصف كيلو',price:160},{name:'كيلو',price:300}], availableToday:true, featured:true, isAvailable:true, preparationTime:'60 دقيقة', serves:'2-3 أفراد', sortOrder:2 },
+      { title:'طاجن لحمة بالخضار', slug:'meat-tajin', category:'طواجن', shortDescription:'طاجن لحمة بصوص غني وخضار طازة بطعم البيت.', mainImage:'/assets/food/photos/tajin.webp', price:180, variants:[{name:'فرد',price:180},{name:'صينية كبيرة',price:520}], availableToday:true, featured:true, isAvailable:true, preparationTime:'50 دقيقة', serves:'1-4 أفراد', sortOrder:3 },
+      { title:'وجبة فراخ بيتي', slug:'home-chicken-meal', category:'أكل بيتي', shortDescription:'وجبة كاملة بفراخ وتتبيلة البيت وإضافات اليوم.', mainImage:'/assets/food/photos/chicken.webp', price:145, variants:[{name:'فرد',price:145},{name:'وجبة عائلية',price:480}], availableToday:true, featured:true, isAvailable:true, preparationTime:'35-45 دقيقة', serves:'1-4 أفراد', sortOrder:4 },
+      { title:'فطير بيتي', slug:'home-feteer', category:'مخبوزات', shortDescription:'فطير طازة مناسب للفطار أو العزومات.', mainImage:'/assets/food/photos/feteer.webp', price:120, variants:[{name:'قطعة',price:120}], availableToday:true, featured:false, isAvailable:true, preparationTime:'30 دقيقة', serves:'2 أفراد', sortOrder:5 },
+      { title:'حلو اليوم', slug:'dessert-of-the-day', category:'حلويات', shortDescription:'اختيار يومي من حلويات البيت.', mainImage:'/assets/food/photos/dessert.webp', price:90, variants:[{name:'علبة',price:90},{name:'علبة كبيرة',price:160}], availableToday:true, featured:false, isAvailable:true, preparationTime:'حسب المتاح', sortOrder:6 }
     ]);
   }
 
   if (await Gallery.countDocuments() === 0) {
     await Gallery.insertMany([
-      { image:'/assets/food/gallery1.svg', title:'من أكل البيت', category:'أكل بيتي', sortOrder:1 },
-      { image:'/assets/food/mahshi.svg', title:'محاشي ماما حنان', category:'محاشي', sortOrder:2 },
-      { image:'/assets/food/grill.svg', title:'مشويات', category:'مشويات', sortOrder:3 },
-      { image:'/assets/food/tajin.svg', title:'طواجن', category:'طواجن', sortOrder:4 },
-      { image:'/assets/food/gallery2.svg', title:'تجهيز عزومات', category:'عزومات', sortOrder:5 },
-      { image:'/assets/food/dessert.svg', title:'حلويات البيت', category:'حلويات', sortOrder:6 }
+      { image:'/assets/food/photos/chicken.webp', title:'من أكل البيت', category:'أكل بيتي', sortOrder:1 },
+      { image:'/assets/food/photos/mahshi.webp', title:'محاشي ماما حنان', category:'محاشي', sortOrder:2 },
+      { image:'/assets/food/photos/grill.webp', title:'مشويات', category:'مشويات', sortOrder:3 },
+      { image:'/assets/food/photos/tajin.webp', title:'طواجن', category:'طواجن', sortOrder:4 },
+      { image:'/assets/food/photos/feteer.webp', title:'تجهيز عزومات', category:'عزومات', sortOrder:5 },
+      { image:'/assets/food/photos/dessert.webp', title:'حلويات البيت', category:'حلويات', sortOrder:6 }
     ]);
   }
+
+  // Replace only our original local SVG placeholders. Any image uploaded from Admin/Cloudinary is left untouched.
+  const placeholderImageMap = {
+    '/assets/food/grill.svg':'/assets/food/photos/grill.webp',
+    '/assets/food/mahshi.svg':'/assets/food/photos/mahshi.webp',
+    '/assets/food/tajin.svg':'/assets/food/photos/tajin.webp',
+    '/assets/food/home.svg':'/assets/food/photos/chicken.webp',
+    '/assets/food/bakery.svg':'/assets/food/photos/feteer.webp',
+    '/assets/food/dessert.svg':'/assets/food/photos/dessert.webp',
+    '/assets/food/gallery1.svg':'/assets/food/photos/chicken.webp',
+    '/assets/food/gallery2.svg':'/assets/food/photos/feteer.webp',
+    '/assets/food/gallery3.svg':'/assets/food/photos/dessert.webp'
+  };
+  await Promise.all(Object.entries(placeholderImageMap).flatMap(([oldPath,newPath]) => [
+    Product.updateMany({ mainImage: oldPath }, { $set: { mainImage: newPath, updatedAt: new Date() } }),
+    Category.updateMany({ image: oldPath }, { $set: { image: newPath } }),
+    Gallery.updateMany({ image: oldPath }, { $set: { image: newPath, updatedAt: new Date() } })
+  ]));
 
   if (await Review.countDocuments() === 0) {
     await Review.insertMany([

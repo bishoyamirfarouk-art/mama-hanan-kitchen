@@ -1,10 +1,12 @@
-const CACHE = 'mama-hanan-kitchen-v4';
+const CACHE = 'mama-hanan-kitchen-v5';
 const STATIC = [
   '/', '/index.html', '/menu.html', '/products.html', '/products_page.html', '/gallery.html', '/services.html',
   '/style.css', '/config.js', '/app.js',
   '/assets/brand/logo-horizontal.png', '/assets/brand/logo-badge.png',
   '/assets/brand/logo-icon.png', '/assets/brand/hero-home.webp',
-  '/assets/brand/favicon.png'
+  '/assets/brand/favicon.png', '/assets/icons/whatsapp.svg',
+  '/assets/food/photos/grill.webp', '/assets/food/photos/mahshi.webp', '/assets/food/photos/tajin.webp',
+  '/assets/food/photos/chicken.webp', '/assets/food/photos/feteer.webp', '/assets/food/photos/dessert.webp'
 ];
 self.addEventListener('install', event => event.waitUntil(
   caches.open(CACHE).then(cache => cache.addAll(STATIC)).then(() => self.skipWaiting())

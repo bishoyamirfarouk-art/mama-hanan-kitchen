@@ -1,6 +1,7 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "cleanUrls": true,
+  "trailingSlash": false,
   "builds": [
     {
       "src": "server/index.js",
@@ -27,13 +28,34 @@
       "use": "@vercel/static"
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "server/index.js"
+      "source": "/api/:path*",
+      "destination": "/server/index.js"
     },
     {
-      "handle": "filesystem"
+      "source": "/menu",
+      "destination": "/menu.html"
+    },
+    {
+      "source": "/products",
+      "destination": "/menu.html"
+    },
+    {
+      "source": "/products_page",
+      "destination": "/menu.html"
+    },
+    {
+      "source": "/gallery",
+      "destination": "/gallery.html"
+    },
+    {
+      "source": "/services",
+      "destination": "/services.html"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
     }
   ],
   "headers": [
@@ -56,6 +78,15 @@
       ]
     },
     {
+      "source": "/admin",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
       "source": "/admin.html",
       "headers": [
         {
@@ -64,6 +95,5 @@
         }
       ]
     }
-  ],
-  "$schema": "https://openapi.vercel.sh/vercel.json"
+  ]
 }

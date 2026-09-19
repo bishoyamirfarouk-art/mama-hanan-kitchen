@@ -12,28 +12,28 @@
       heroImage: '/assets/brand/hero-home.webp', storeLogo: '/assets/brand/logo-horizontal.png', whatsappNumber: '', whatsappGroupUrl: 'https://chat.whatsapp.com/KNTdkIdvpmAE4xasykWImf?s=sh&p=a&mlu=0&ilr=4', phoneNumber: '01211377826', address: '', openingHours: '', currency: 'ج.م', deliveryFee: 0, deliveryEnabled: true, pickupEnabled: true
     },
     categories: [
-      { _id:'c1', name:'مشويات', slug:'grills', image:'/assets/food/grill.svg' },
-      { _id:'c2', name:'محاشي', slug:'mahshi', image:'/assets/food/mahshi.svg' },
-      { _id:'c3', name:'طواجن', slug:'tajin', image:'/assets/food/tajin.svg' },
-      { _id:'c4', name:'أكل بيتي', slug:'home-food', image:'/assets/food/home.svg' },
-      { _id:'c5', name:'مخبوزات', slug:'bakery', image:'/assets/food/bakery.svg' },
-      { _id:'c6', name:'حلويات', slug:'dessert', image:'/assets/food/dessert.svg' }
+      { _id:'c1', name:'مشويات', slug:'grills', image:'/assets/food/photos/grill.webp' },
+      { _id:'c2', name:'محاشي', slug:'mahshi', image:'/assets/food/photos/mahshi.webp' },
+      { _id:'c3', name:'طواجن', slug:'tajin', image:'/assets/food/photos/tajin.webp' },
+      { _id:'c4', name:'أكل بيتي', slug:'home-food', image:'/assets/food/photos/chicken.webp' },
+      { _id:'c5', name:'مخبوزات', slug:'bakery', image:'/assets/food/photos/feteer.webp' },
+      { _id:'c6', name:'حلويات', slug:'dessert', image:'/assets/food/photos/dessert.webp' }
     ],
     products: [
-      { _id:'p1', title:'مشويات مشكلة', category:'مشويات', shortDescription:'تشكيلة مشويات بطعم الفحم مع إضافات البيت.', mainImage:'/assets/food/grill.svg', price:220, oldPrice:250, offerLabel:'عرض اليوم', variants:[{name:'نصف كيلو',price:220},{name:'كيلو',price:420}], availableToday:true, featured:true, isAvailable:true, preparationTime:'45-60 دقيقة', serves:'2-4 أفراد' },
-      { _id:'p2', title:'محشي مشكل', category:'محاشي', shortDescription:'ورق عنب وكوسة وفلفل بخلطة بيتي مميزة.', mainImage:'/assets/food/mahshi.svg', price:160, variants:[{name:'نصف كيلو',price:160},{name:'كيلو',price:300}], availableToday:true, featured:true, isAvailable:true, preparationTime:'60 دقيقة', serves:'2-3 أفراد' },
-      { _id:'p3', title:'طاجن لحمة بالخضار', category:'طواجن', shortDescription:'طاجن ساخن بصوص غني وخضار طازة.', mainImage:'/assets/food/tajin.svg', price:180, variants:[{name:'فرد',price:180},{name:'صينية كبيرة',price:520}], availableToday:true, featured:true, isAvailable:true, preparationTime:'50 دقيقة', serves:'1-4 أفراد' },
-      { _id:'p4', title:'وجبة فراخ بيتي', category:'أكل بيتي', shortDescription:'وجبة كاملة بفراخ وتتبيلة البيت وإضافات اليوم.', mainImage:'/assets/food/home.svg', price:145, variants:[{name:'فرد',price:145},{name:'وجبة عائلية',price:480}], availableToday:true, featured:true, isAvailable:true, preparationTime:'35-45 دقيقة', serves:'1-4 أفراد' },
-      { _id:'p5', title:'فطير بيتي', category:'مخبوزات', shortDescription:'فطير طازة مناسب للفطار أو العزومات.', mainImage:'/assets/food/bakery.svg', price:120, variants:[{name:'قطعة',price:120}], availableToday:true, featured:false, isAvailable:true, preparationTime:'30 دقيقة', serves:'2 أفراد' },
-      { _id:'p6', title:'حلو اليوم', category:'حلويات', shortDescription:'اختيار يومي من الحلويات البيتي.', mainImage:'/assets/food/dessert.svg', price:90, variants:[{name:'علبة',price:90},{name:'علبة كبيرة',price:160}], availableToday:true, featured:false, isAvailable:true, preparationTime:'حسب المتاح', serves:'' }
+      { _id:'p1', title:'مشويات مشكلة', category:'مشويات', shortDescription:'تشكيلة مشويات بطعم الفحم مع إضافات البيت.', mainImage:'/assets/food/photos/grill.webp', price:220, oldPrice:250, offerLabel:'عرض اليوم', variants:[{name:'نصف كيلو',price:220},{name:'كيلو',price:420}], availableToday:true, featured:true, isAvailable:true, preparationTime:'45-60 دقيقة', serves:'2-4 أفراد' },
+      { _id:'p2', title:'محشي مشكل', category:'محاشي', shortDescription:'ورق عنب وكوسة وفلفل بخلطة بيتي مميزة.', mainImage:'/assets/food/photos/mahshi.webp', price:160, variants:[{name:'نصف كيلو',price:160},{name:'كيلو',price:300}], availableToday:true, featured:true, isAvailable:true, preparationTime:'60 دقيقة', serves:'2-3 أفراد' },
+      { _id:'p3', title:'طاجن لحمة بالخضار', category:'طواجن', shortDescription:'طاجن ساخن بصوص غني وخضار طازة.', mainImage:'/assets/food/photos/tajin.webp', price:180, variants:[{name:'فرد',price:180},{name:'صينية كبيرة',price:520}], availableToday:true, featured:true, isAvailable:true, preparationTime:'50 دقيقة', serves:'1-4 أفراد' },
+      { _id:'p4', title:'وجبة فراخ بيتي', category:'أكل بيتي', shortDescription:'وجبة كاملة بفراخ وتتبيلة البيت وإضافات اليوم.', mainImage:'/assets/food/photos/chicken.webp', price:145, variants:[{name:'فرد',price:145},{name:'وجبة عائلية',price:480}], availableToday:true, featured:true, isAvailable:true, preparationTime:'35-45 دقيقة', serves:'1-4 أفراد' },
+      { _id:'p5', title:'فطير بيتي', category:'مخبوزات', shortDescription:'فطير طازة مناسب للفطار أو العزومات.', mainImage:'/assets/food/photos/feteer.webp', price:120, variants:[{name:'قطعة',price:120}], availableToday:true, featured:false, isAvailable:true, preparationTime:'30 دقيقة', serves:'2 أفراد' },
+      { _id:'p6', title:'حلو اليوم', category:'حلويات', shortDescription:'اختيار يومي من الحلويات البيتي.', mainImage:'/assets/food/photos/dessert.webp', price:90, variants:[{name:'علبة',price:90},{name:'علبة كبيرة',price:160}], availableToday:true, featured:false, isAvailable:true, preparationTime:'حسب المتاح', serves:'' }
     ],
     gallery: [
-      { _id:'g1', image:'/assets/food/gallery1.svg', title:'سفرة اليوم', category:'أكل بيتي' },
-      { _id:'g2', image:'/assets/food/grill.svg', title:'مشويات', category:'مشويات' },
-      { _id:'g3', image:'/assets/food/mahshi.svg', title:'محاشي', category:'محاشي' },
-      { _id:'g4', image:'/assets/food/tajin.svg', title:'طواجن', category:'طواجن' },
-      { _id:'g5', image:'/assets/food/gallery2.svg', title:'عزومات', category:'عزومات' },
-      { _id:'g6', image:'/assets/food/dessert.svg', title:'حلويات', category:'حلويات' }
+      { _id:'g1', image:'/assets/food/photos/chicken.webp', title:'سفرة اليوم', category:'أكل بيتي' },
+      { _id:'g2', image:'/assets/food/photos/grill.webp', title:'مشويات', category:'مشويات' },
+      { _id:'g3', image:'/assets/food/photos/mahshi.webp', title:'محاشي', category:'محاشي' },
+      { _id:'g4', image:'/assets/food/photos/tajin.webp', title:'طواجن', category:'طواجن' },
+      { _id:'g5', image:'/assets/food/photos/feteer.webp', title:'عزومات', category:'عزومات' },
+      { _id:'g6', image:'/assets/food/photos/dessert.webp', title:'حلويات', category:'حلويات' }
     ],
     reviews: [
       { _id:'r1', name:'عميلة المتجر', text:'الأكل وصل مرتب وساخن والطعم بيتي فعلًا.', rating:5 },
@@ -92,7 +92,8 @@
           <button class="btn btn-primary" style="grid-column:1/-1" type="submit">تسجيل الطلب وفتحه على واتساب</button>
         </form>
       </div></div></div>
-      <div class="modal" id="lightboxModal"><div class="lightbox-card"><button class="close-btn lb-close" data-modal-close="lightboxModal">✕</button><button class="lb-btn lb-prev" id="lbPrev">›</button><img id="lbImage" alt="صورة من المعرض"><button class="lb-btn lb-next" id="lbNext">‹</button></div></div>`;
+      <div class="modal" id="lightboxModal"><div class="lightbox-card"><button class="close-btn lb-close" data-modal-close="lightboxModal">✕</button><button class="lb-btn lb-prev" id="lbPrev">›</button><img id="lbImage" alt="صورة من المعرض"><button class="lb-btn lb-next" id="lbNext">‹</button></div></div>
+      <a class="whatsapp-fab" id="floatingWhatsapp" href="#" target="_blank" rel="noopener" aria-label="واتساب" title="تواصل على واتساب" hidden><img src="/assets/icons/whatsapp.svg" alt=""><span>واتساب</span></a>`;
 
     qsa('[data-cart-open]').forEach(b => b.addEventListener('click', openCart));
     qs('[data-cart-close]')?.addEventListener('click', closeCart);
@@ -125,7 +126,7 @@
   function renderCart() {
     const host = qs('#cartItems'); if (!host) return;
     if (!state.cart.length) {
-      host.innerHTML = '<div class="empty"><div style="font-size:3rem">🛒</div><p>طلبك فاضي حاليًا.</p><a class="btn btn-ghost" href="/menu">تصفح المنيو</a></div>';
+      host.innerHTML = '<div class="empty"><div style="font-size:3rem">🛒</div><p>طلبك فاضي حاليًا.</p><a class="btn btn-ghost" href="/menu.html">تصفح المنيو</a></div>';
     } else {
       host.innerHTML = state.cart.map((item,idx)=>`
         <div class="cart-item">
@@ -236,7 +237,7 @@
     toggleText('[data-hours]',s.openingHours);
     qsa('[data-phone]').forEach(el=>el.textContent=s.phoneNumber||'');
     qsa('[data-phone-link]').forEach(a=>{const has=Boolean(String(s.phoneNumber||'').trim());a.hidden=!has;if(has)a.href=`tel:${String(s.phoneNumber).replace(/[^+\d]/g,'')}`;});
-    qsa('[data-whatsapp-group]').forEach(a=>{const has=Boolean(String(s.whatsappGroupUrl||'').trim());a.hidden=!has;if(has)a.href=s.whatsappGroupUrl;});
+    qsa('[data-whatsapp-group]').forEach(a=>{const has=Boolean(String(s.whatsappGroupUrl||'').trim());a.hidden=!has;if(has){a.href=s.whatsappGroupUrl;a.innerHTML='<img class="inline-whatsapp-icon" src="/assets/icons/whatsapp.svg" alt=""> <span>انضم لجروب واتساب</span>';}});
     qsa('[data-year]').forEach(el=>el.textContent=new Date().getFullYear());
 
     if(qs('[data-hero-title]')) qs('[data-hero-title]').textContent=s.heroTitle||'أكل بيتي بطعم زمان';
@@ -245,10 +246,14 @@
     if(qs('[data-hero-bg]') && s.heroImage) qs('[data-hero-bg]').style.backgroundImage=`linear-gradient(90deg,rgba(23,19,17,.98) 12%,rgba(23,19,17,.83) 48%,rgba(23,19,17,.36) 100%),url("${String(s.heroImage).replace(/"/g,'')}")`;
 
     const phone=String(s.whatsappNumber||'').replace(/\D/g,'');
+    const groupUrl=String(s.whatsappGroupUrl||'').trim();
+    const publicWhatsappTarget=phone?`https://wa.me/${phone}`:groupUrl;
     qsa('[data-whatsapp-link]').forEach(a=>{
-      if(phone){a.hidden=false;a.href=`https://wa.me/${phone}`;a.target='_blank';a.rel='noopener';a.onclick=null;}
+      if(publicWhatsappTarget){a.hidden=false;a.href=publicWhatsappTarget;a.target='_blank';a.rel='noopener';a.onclick=null;}
       else {a.hidden=true;a.removeAttribute('href');a.onclick=null;}
     });
+    const fab=qs('#floatingWhatsapp');
+    if(fab){fab.hidden=!publicWhatsappTarget;if(publicWhatsappTarget)fab.href=publicWhatsappTarget;}
     const checkoutSubmit=qs('#checkoutForm button[type="submit"]');
     if(checkoutSubmit) checkoutSubmit.textContent=phone?'تسجيل الطلب وفتحه على واتساب':'تأكيد الطلب';
 
@@ -258,9 +263,9 @@
         ['فيسبوك',s.facebookUrl,'f'],
         ['إنستجرام',s.instagramUrl,'◎'],
         ['تيك توك',s.tiktokUrl,'♪'],
-        ['جروب واتساب',s.whatsappGroupUrl,'💬']
+        ['جروب واتساب',s.whatsappGroupUrl,'<img src="/assets/icons/whatsapp.svg" alt="">']
       ].filter(x=>x[1]);
-      socials.innerHTML=links.map(([label,url,icon])=>`<a href="${esc(url)}" target="_blank" rel="noopener" aria-label="${esc(label)}" title="${esc(label)}">${icon}</a>`).join('');
+      socials.innerHTML=links.map(([label,url,icon])=>`<a class="${label==='جروب واتساب'?'whatsapp-social':''}" href="${esc(url)}" target="_blank" rel="noopener" aria-label="${esc(label)}" title="${esc(label)}">${icon}</a>`).join('');
     }
     document.title=document.title.replace('مطبخ ماما حنان',storeName);
     let ld=qs('#storeStructuredData'); if(!ld){ld=document.createElement('script');ld.id='storeStructuredData';ld.type='application/ld+json';document.head.appendChild(ld);} ld.textContent=JSON.stringify({'@context':'https://schema.org','@type':'FoodEstablishment',name:storeName,telephone:s.phoneNumber||undefined,address:s.address||undefined,openingHours:s.openingHours||undefined,url:location.origin,image:s.heroImage?new URL(s.heroImage,location.origin).href:undefined});
@@ -268,7 +273,7 @@
 
   function renderHome() {
     const catHost=qs('#homeCategories');
-    if(catHost) catHost.innerHTML=state.categories.slice(0,8).map(c=>`<a class="category-card reveal" href="/menu?category=${encodeURIComponent(c.name)}"><img loading="lazy" src="${esc(c.image||'/assets/food/meal.svg')}" alt="${esc(c.name)}"><div class="category-content"><h3>${esc(c.name)}</h3><span>شوف الأصناف ←</span></div></a>`).join('');
+    if(catHost) catHost.innerHTML=state.categories.slice(0,8).map(c=>`<a class="category-card reveal" href="/menu.html?category=${encodeURIComponent(c.name)}"><img loading="lazy" src="${esc(c.image||'/assets/food/meal.svg')}" alt="${esc(c.name)}"><div class="category-content"><h3>${esc(c.name)}</h3><span>شوف الأصناف ←</span></div></a>`).join('');
     const feat=state.products.filter(p=>p.featured&&p.availableToday&&!p.isHidden).slice(0,8);
     const pHost=qs('#featuredProducts'); if(pHost){pHost.innerHTML=(feat.length?feat:state.products.slice(0,4)).map(productCard).join('');bindProductCards(pHost);}
     const gHost=qs('#homeGallery'); if(gHost){const items=state.gallery.slice(0,8);gHost.innerHTML=items.map((g,i)=>galleryCard(g,i)).join('');bindGallery(gHost,items);}
