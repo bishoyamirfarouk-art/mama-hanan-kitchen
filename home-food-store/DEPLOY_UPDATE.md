@@ -33,3 +33,9 @@
 كلمة المرور = قيمة `ADMIN_PASSWORD`
 
 إذا غيّرت `ADMIN_PASSWORD` في Vercel ثم عملت Redeploy، النسخة الحالية تزامن الباسورد الجديد تلقائيًا.
+
+
+## Hotfix 1.1.1
+- Added physical `menu.html` so `/menu` is served directly by Vercel clean URLs.
+- Removed the old `/menu -> /products_page.html` route that could return 404 with `cleanUrls`.
+- Kept `/products` as a backwards-compatible alias.

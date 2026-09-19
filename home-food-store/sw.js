@@ -1,6 +1,6 @@
-const CACHE = 'mama-hanan-kitchen-v3';
+const CACHE = 'mama-hanan-kitchen-v4';
 const STATIC = [
-  '/', '/index.html', '/products_page.html', '/gallery.html', '/services.html',
+  '/', '/index.html', '/menu.html', '/products.html', '/products_page.html', '/gallery.html', '/services.html',
   '/style.css', '/config.js', '/app.js',
   '/assets/brand/logo-horizontal.png', '/assets/brand/logo-badge.png',
   '/assets/brand/logo-icon.png', '/assets/brand/hero-home.webp',

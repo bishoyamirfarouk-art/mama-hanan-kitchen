@@ -25,3 +25,9 @@ POS_API_KEY=<LONG_RANDOM_SECRET>
 
 ## نشر التحديث
 استبدل محتويات مجلد home-food-store في GitHub بهذه النسخة. Vercel سيعيد النشر تلقائيًا.
+
+
+## Hotfix 1.1.1
+- Added physical `menu.html` so `/menu` is served directly by Vercel clean URLs.
+- Removed the old `/menu -> /products_page.html` route that could return 404 with `cleanUrls`.
+- Kept `/products` as a backwards-compatible alias.
