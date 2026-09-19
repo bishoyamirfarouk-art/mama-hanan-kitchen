@@ -1,0 +1,14 @@
+{
+  "name": "بيت ومشويات - متجر الأكل البيتي",
+  "short_name": "بيت ومشويات",
+  "description": "متجر أكل بيتي ومشويات وطلبات عزومات",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#171311",
+  "theme_color": "#e85d1f",
+  "icons": [
+    { "src": "/assets/food/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

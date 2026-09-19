@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="شعار متجر الأكل">
+  <defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="#e85d1f"/><stop offset="1" stop-color="#f59e0b"/></linearGradient></defs>
+  <rect width="512" height="512" rx="120" fill="#171311"/>
+  <circle cx="256" cy="256" r="160" fill="url(#g)"/>
+  <path d="M155 279c25 54 70 83 101 83 35 0 78-31 101-83H155Z" fill="#fff0d6"/>
+  <path d="M181 234c16-43 46-69 75-69 31 0 61 27 76 69" fill="none" stroke="#fff0d6" stroke-width="22" stroke-linecap="round"/>
+  <path d="M135 282h242" stroke="#171311" stroke-width="16" stroke-linecap="round"/>
+  <path d="M213 130c-14-18-14-34 0-52M256 130c-14-18-14-34 0-52M299 130c-14-18-14-34 0-52" fill="none" stroke="#fff0d6" stroke-width="14" stroke-linecap="round"/>
+</svg>

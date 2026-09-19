@@ -1,0 +1,17 @@
+{
+  "name": "home-food-store-server",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": { "start": "node index.js" },
+  "dependencies": {
+    "cloudinary": "^2.10.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-fileupload": "^1.5.2",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.7.1",
+    "serverless-http": "^4.0.0"
+  }
+}
