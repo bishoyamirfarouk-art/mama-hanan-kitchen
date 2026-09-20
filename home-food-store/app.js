@@ -42,7 +42,7 @@
     ]
   };
 
-  const state = { settings: demo.settings, categories: [], products: [], gallery: [], reviews: [], cart: loadCart(), lightboxIndex: 0, galleryVisible: [] };
+  const state = { settings: demo.settings, categories: [], products: [], gallery: [], reviews: [], deliveryAreas: [], cart: loadCart(), lightboxIndex: 0, galleryVisible: [] };
 
   function loadCart() {
     try { return JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch (_) { return []; }
@@ -85,7 +85,7 @@
           <div class="form-group"><label>الاسم *</label><input class="input" name="customerName" required></div>
           <div class="form-group"><label>رقم الهاتف *</label><input class="input" name="customerPhone" inputmode="tel" required></div>
           <div class="form-group"><label>طريقة الاستلام</label><select class="select" name="fulfillment" id="fulfillmentSelect"><option value="delivery">توصيل</option><option value="pickup">استلام من المكان</option></select></div>
-          <div class="form-group"><label>المنطقة</label><input class="input" name="area"></div>
+          <div class="form-group" id="areaField"><label>المنطقة</label><div id="deliveryAreaControl"><input class="input" name="area" placeholder="اكتب المنطقة"></div></div>
           <div class="form-group" id="addressField" style="grid-column:1/-1"><label>العنوان</label><input class="input" name="customerAddress"></div>
           <div class="form-group" style="grid-column:1/-1"><label>ملاحظات</label><textarea class="input" name="notes" placeholder="أي تفاصيل مهمة للطلب..."></textarea></div>
           <div style="grid-column:1/-1;background:var(--surface-2);border-radius:14px;padding:14px" id="checkoutSummary"></div>
@@ -103,6 +103,7 @@
     qs('#checkoutBtn')?.addEventListener('click', openCheckout);
     qs('#checkoutForm')?.addEventListener('submit', submitOrder);
     qs('#fulfillmentSelect')?.addEventListener('change', toggleAddress);
+    qs('#deliveryAreaControl')?.addEventListener('change', renderCheckoutSummary);
     qs('#lbPrev')?.addEventListener('click', () => moveLightbox(-1));
     qs('#lbNext')?.addEventListener('click', () => moveLightbox(1));
     let touchX=0; qs('#lightboxModal')?.addEventListener('touchstart',e=>{touchX=e.changedTouches[0].clientX},{passive:true}); qs('#lightboxModal')?.addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-touchX;if(Math.abs(dx)>45)moveLightbox(dx>0?-1:1)},{passive:true});
@@ -126,7 +127,7 @@
   function renderCart() {
     const host = qs('#cartItems'); if (!host) return;
     if (!state.cart.length) {
-      host.innerHTML = '<div class="empty"><div style="font-size:3rem">🛒</div><p>طلبك فاضي حاليًا.</p><a class="btn btn-ghost" href="/menu.html">تصفح المنيو</a></div>';
+      host.innerHTML = '<div class="empty"><div style="font-size:3rem">🛒</div><p>طلبك فاضي حاليًا.</p><a class="btn btn-ghost" href="/menu">تصفح المنيو</a></div>';
     } else {
       host.innerHTML = state.cart.map((item,idx)=>`
         <div class="cart-item">
@@ -183,17 +184,48 @@
     openModal('productModal');
   }
 
+  function renderFulfillmentOptions(){
+    const select=qs('#fulfillmentSelect'); if(!select)return;
+    const options=[];
+    if(state.settings.deliveryEnabled!==false)options.push('<option value="delivery">توصيل</option>');
+    if(state.settings.pickupEnabled!==false)options.push('<option value="pickup">استلام من المكان</option>');
+    select.innerHTML=options.join('')||'<option value="pickup">الطلب متوقف مؤقتًا</option>';
+    select.disabled=!options.length;
+  }
   function openCheckout() {
     if (!state.cart.length) return toast('أضف وجبة واحدة على الأقل','error');
-    closeCart(); renderCheckoutSummary(); toggleAddress(); openModal('checkoutModal'); track('order_start');
+    renderFulfillmentOptions();
+    if(qs('#fulfillmentSelect')?.disabled)return toast('الطلبات متوقفة مؤقتًا','error');
+    closeCart(); renderDeliveryAreaControl(); renderCheckoutSummary(); toggleAddress(); openModal('checkoutModal'); track('order_start');
+  }
+  function renderDeliveryAreaControl() {
+    const host=qs('#deliveryAreaControl'); if(!host) return;
+    if(state.deliveryAreas.length){
+      host.innerHTML=`<select class="select" name="areaId" id="deliveryAreaSelect" required><option value="">اختر منطقة التوصيل</option>${state.deliveryAreas.map(a=>`<option value="${esc(a._id)}" data-fee="${Number(a.fee||0)}" data-min="${Number(a.minimumOrder||0)}" data-name="${esc(a.name)}">${esc(a.name)} — ${money(a.fee||0)}</option>`).join('')}</select>`;
+      qs('#deliveryAreaSelect')?.addEventListener('change',renderCheckoutSummary);
+    } else {
+      host.innerHTML='<input class="input" name="area" placeholder="اكتب المنطقة">';
+    }
   }
   function toggleAddress() {
     const delivery = qs('#fulfillmentSelect')?.value !== 'pickup';
     if (qs('#addressField')) qs('#addressField').style.display = delivery ? 'grid' : 'none';
+    if (qs('#areaField')) qs('#areaField').style.display = delivery ? 'grid' : 'none';
+    renderCheckoutSummary();
+  }
+  function selectedDeliveryArea(){
+    const select=qs('#deliveryAreaSelect'); if(!select||!select.value) return null;
+    return state.deliveryAreas.find(a=>String(a._id)===String(select.value))||null;
   }
   function renderCheckoutSummary() {
     const subtotal=state.cart.reduce((s,i)=>s+i.unitPrice*i.quantity,0);
-    qs('#checkoutSummary').innerHTML = `<div class="total-row"><span>الأصناف</span><b>${money(subtotal)}</b></div><div class="muted" style="font-size:.8rem">رسوم التوصيل تُحسب من إعدادات المتجر عند تسجيل الطلب.</div>`;
+    const delivery=qs('#fulfillmentSelect')?.value!=='pickup';
+    const area=delivery?selectedDeliveryArea():null;
+    const fee=delivery?Number(area?.fee ?? state.settings.deliveryFee ?? 0):0;
+    const min=Math.max(Number(state.settings.minimumOrder||0),Number(area?.minimumOrder||0));
+    const total=subtotal+fee;
+    const minNote=min>0?`<div class="muted" style="font-size:.8rem;margin-top:6px">الحد الأدنى للطلب: ${money(min)}</div>`:'';
+    qs('#checkoutSummary').innerHTML = `<div class="total-row"><span>الأصناف</span><b>${money(subtotal)}</b></div>${delivery?`<div class="total-row"><span>التوصيل${area?` - ${esc(area.name)}`:''}</span><b>${money(fee)}</b></div>`:''}<div class="total-row checkout-grand"><strong>الإجمالي المتوقع</strong><strong>${money(total)}</strong></div>${minNote}`;
   }
   function buildWhatsappMessage(order, form) {
     const lines = state.cart.map(i=>`${i.quantity} × ${i.title}${i.selectedVariant?` - ${i.selectedVariant}`:''} = ${money(i.unitPrice*i.quantity)}`);
@@ -203,6 +235,7 @@
     e.preventDefault();
     const btn=e.submitter; if(btn){btn.disabled=true;btn.textContent='جاري تسجيل الطلب...';}
     const data=Object.fromEntries(new FormData(e.currentTarget).entries());
+    const area=selectedDeliveryArea(); if(area){data.area=area.name;data.areaId=area._id;}
     data.items=state.cart.map(i=>({productId:i.productId,selectedVariant:i.selectedVariant,quantity:i.quantity,notes:''}));
     try {
       const order=await fetchJson(`${API}/orders`,{method:'POST',body:JSON.stringify(data)});
@@ -273,7 +306,7 @@
 
   function renderHome() {
     const catHost=qs('#homeCategories');
-    if(catHost) catHost.innerHTML=state.categories.slice(0,8).map(c=>`<a class="category-card reveal" href="/menu.html?category=${encodeURIComponent(c.name)}"><img loading="lazy" src="${esc(c.image||'/assets/food/meal.svg')}" alt="${esc(c.name)}"><div class="category-content"><h3>${esc(c.name)}</h3><span>شوف الأصناف ←</span></div></a>`).join('');
+    if(catHost) catHost.innerHTML=state.categories.slice(0,8).map(c=>`<a class="category-card reveal" href="/menu?category=${encodeURIComponent(c.name)}"><img loading="lazy" src="${esc(c.image||'/assets/food/meal.svg')}" alt="${esc(c.name)}"><div class="category-content"><h3>${esc(c.name)}</h3><span>شوف الأصناف ←</span></div></a>`).join('');
     const feat=state.products.filter(p=>p.featured&&p.availableToday&&!p.isHidden).slice(0,8);
     const pHost=qs('#featuredProducts'); if(pHost){pHost.innerHTML=(feat.length?feat:state.products.slice(0,4)).map(productCard).join('');bindProductCards(pHost);}
     const gHost=qs('#homeGallery'); if(gHost){const items=state.gallery.slice(0,8);gHost.innerHTML=items.map((g,i)=>galleryCard(g,i)).join('');bindGallery(gHost,items);}
@@ -329,10 +362,10 @@
 
   async function init() {
     setupSharedUI(); setupNav(); setupPwa(); updateCartCount();
-    const [settings,categories,products,gallery,reviews]=await Promise.all([
-      safeApi('/settings',demo.settings),safeApi('/categories',demo.categories),safeApi('/products',demo.products),safeApi('/gallery',demo.gallery),safeApi('/reviews',demo.reviews)
+    const [settings,categories,products,gallery,reviews,deliveryAreas]=await Promise.all([
+      safeApi('/settings',demo.settings),safeApi('/categories',demo.categories),safeApi('/products',demo.products),safeApi('/gallery',demo.gallery),safeApi('/reviews',demo.reviews),safeApi('/delivery-areas',[])
     ]);
-    state.settings=settings&&settings.storeName?settings:demo.settings;state.categories=Array.isArray(categories)?categories:demo.categories;state.products=Array.isArray(products)?products:demo.products;state.gallery=Array.isArray(gallery)?gallery:demo.gallery;state.reviews=Array.isArray(reviews)?reviews:demo.reviews;
+    state.settings=settings&&settings.storeName?settings:demo.settings;state.categories=Array.isArray(categories)?categories:demo.categories;state.products=Array.isArray(products)?products:demo.products;state.gallery=Array.isArray(gallery)?gallery:demo.gallery;state.reviews=Array.isArray(reviews)?reviews:demo.reviews;state.deliveryAreas=Array.isArray(deliveryAreas)?deliveryAreas:[];
     applySettings();
     const page=document.body.dataset.page;
     if(page==='home')renderHome();if(page==='menu')renderMenu();if(page==='gallery')renderGalleryPage();

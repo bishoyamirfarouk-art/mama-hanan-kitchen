@@ -47,6 +47,7 @@ JWT_SECRET=
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=
 ALLOWED_ORIGINS=https://mama-hanan-kitchen.vercel.app
+POS_API_KEY=
 ```
 
 > لا ترفع `.env` أو أي Secrets إلى GitHub.
@@ -58,16 +59,23 @@ ALLOWED_ORIGINS=https://mama-hanan-kitchen.vercel.app
 - `/services` الخدمات
 - `/admin` لوحة الإدارة
 
+تم تفعيل `cleanUrls` على Vercel، لذلك امتداد `.html` لا يظهر للزائر وروابط `.html` القديمة تتحول تلقائيًا للمسار النظيف.
+
 ## لوحة الإدارة
 تدعم:
 - Dashboard وحالة MongoDB/Cloudinary
 - إدارة الوجبات والأسعار والأحجام
 - إدارة الأقسام
-- Gallery + رفع الصور إلى Cloudinary
-- الطلبات وحالاتها
+- Gallery + رفع الصور إلى Cloudinary مع تحويل تلقائي إلى WebP
+- الطلبات وحالاتها + بحث + تفاصيل + طباعة
+- مناطق التوصيل ورسوم وحد أدنى لكل منطقة
+- إدارة آراء العملاء
+- تقارير وإحصائيات + CSV
+- سجل آخر النشاطات في Dashboard
 - إعدادات المتجر
 - رفع/تغيير Hero واللوجو من الإعدادات
-- Backup / Restore
+- Backup / Restore يشمل مناطق التوصيل وسجل النشاط
+- POS API جاهز للربط من خلال POS_API_KEY
 
 ## Cloudinary folders
 الرفع يتم إلى:

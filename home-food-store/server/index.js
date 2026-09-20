@@ -229,6 +229,18 @@ const activityLogSchema = new mongoose.Schema({
 });
 const ActivityLog = mongoose.models.ActivityLog || mongoose.model('ActivityLog', activityLogSchema);
 
+
+const deliveryAreaSchema = new mongoose.Schema({
+  name: { type: String, required: true, unique: true, trim: true },
+  fee: { type: Number, default: 0, min: 0 },
+  minimumOrder: { type: Number, default: 0, min: 0 },
+  sortOrder: { type: Number, default: 0 },
+  isActive: { type: Boolean, default: true, index: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+const DeliveryArea = mongoose.models.DeliveryArea || mongoose.model('DeliveryArea', deliveryAreaSchema);
+
 const BRAND_DEFAULTS = Object.freeze({
   storeName: 'مطبخ ماما حنان',
   tagline: 'أكل بيتي بطعم زمان',
@@ -499,11 +511,64 @@ app.post('/api/upload', auth, api(async (req, res) => {
   if (!file) return res.status(400).json({ error: 'اختر صورة' });
   if (!/^image\//i.test(file.mimetype || '')) return res.status(400).json({ error: 'الملف يجب أن يكون صورة' });
   const folder = cleanString(req.body.folder || 'mama-hanan-kitchen/misc', 100).replace(/[^a-zA-Z0-9/_-]/g, '');
-  const result = await cloudinary.uploader.upload(file.tempFilePath, { folder, resource_type: 'image', transformation: [{ quality: 'auto', fetch_format: 'auto' }] });
-  res.json({ url: result.secure_url, publicId: result.public_id, width: result.width, height: result.height });
+  const result = await cloudinary.uploader.upload(file.tempFilePath, {
+    folder,
+    resource_type: 'image',
+    format: 'webp',
+    transformation: [{ width: 2000, crop: 'limit', quality: 'auto:good' }]
+  });
+  res.json({ url: result.secure_url, publicId: result.public_id, width: result.width, height: result.height, format: result.format || 'webp', bytes: result.bytes || 0 });
+}));
+
+
+app.get('/api/delivery-areas', api(async (req, res) => {
+  res.json(await DeliveryArea.find({ isActive: true }).sort({ sortOrder: 1, name: 1 }).lean());
+}));
+app.get('/api/admin/delivery-areas', auth, api(async (req, res) => {
+  res.json(await DeliveryArea.find({}).sort({ sortOrder: 1, name: 1 }).lean());
+}));
+app.post('/api/delivery-areas', auth, api(async (req, res) => {
+  const name = cleanString(req.body.name, 120);
+  if (!name) return res.status(400).json({ error: 'اسم منطقة التوصيل مطلوب' });
+  const doc = await DeliveryArea.create({ name, fee: Math.max(0, Number(req.body.fee || 0)), minimumOrder: Math.max(0, Number(req.body.minimumOrder || 0)), sortOrder: Number(req.body.sortOrder || 0), isActive: req.body.isActive !== false, updatedAt: new Date() });
+  await logActivity('delivery_area_create', name, req.user.username);
+  res.status(201).json(doc);
+}));
+app.put('/api/delivery-areas/:id', auth, api(async (req, res) => {
+  const update = { ...req.body, updatedAt: new Date() }; delete update._id; delete update.createdAt;
+  if (update.name) update.name = cleanString(update.name, 120);
+  if (Object.prototype.hasOwnProperty.call(update, 'fee')) update.fee = Math.max(0, Number(update.fee || 0));
+  if (Object.prototype.hasOwnProperty.call(update, 'minimumOrder')) update.minimumOrder = Math.max(0, Number(update.minimumOrder || 0));
+  if (Object.prototype.hasOwnProperty.call(update, 'sortOrder')) update.sortOrder = Number(update.sortOrder || 0);
+  const doc = await DeliveryArea.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+  if (!doc) return res.status(404).json({ error: 'منطقة التوصيل غير موجودة' });
+  await logActivity('delivery_area_update', doc.name, req.user.username);
+  res.json(doc);
+}));
+app.delete('/api/delivery-areas/:id', auth, api(async (req, res) => {
+  const doc = await DeliveryArea.findByIdAndDelete(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'منطقة التوصيل غير موجودة' });
+  await logActivity('delivery_area_delete', doc.name, req.user.username);
+  res.json({ ok: true });
+}));
+
+app.get('/api/admin/activity', auth, api(async (req, res) => {
+  const limit = Math.max(10, Math.min(200, Number(req.query.limit || 50)));
+  res.json(await ActivityLog.find({}).sort({ createdAt: -1 }).limit(limit).lean());
 }));
 
 app.get('/api/reviews', api(async (req, res) => res.json(await Review.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).limit(12).lean())));
+app.get('/api/admin/reviews', auth, api(async (req, res) => res.json(await Review.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean())));
+app.post('/api/reviews', auth, api(async (req, res) => {
+  const name=cleanString(req.body.name,120), text=cleanString(req.body.text,700); if(!name||!text)return res.status(400).json({error:'الاسم والرأي مطلوبان'});
+  const doc=await Review.create({name,text,rating:Math.max(1,Math.min(5,Number(req.body.rating||5))),sortOrder:Number(req.body.sortOrder||0),isActive:req.body.isActive!==false});
+  await logActivity('review_create', name, req.user.username); res.status(201).json(doc);
+}));
+app.put('/api/reviews/:id', auth, api(async (req,res)=>{
+  const update={...req.body};delete update._id;delete update.createdAt;if(update.name)update.name=cleanString(update.name,120);if(update.text)update.text=cleanString(update.text,700);if(Object.prototype.hasOwnProperty.call(update,'rating'))update.rating=Math.max(1,Math.min(5,Number(update.rating||5)));
+  const doc=await Review.findByIdAndUpdate(req.params.id,update,{new:true,runValidators:true});if(!doc)return res.status(404).json({error:'الرأي غير موجود'});await logActivity('review_update',doc.name,req.user.username);res.json(doc);
+}));
+app.delete('/api/reviews/:id', auth, api(async(req,res)=>{const doc=await Review.findByIdAndDelete(req.params.id);if(!doc)return res.status(404).json({error:'الرأي غير موجود'});await logActivity('review_delete',doc.name,req.user.username);res.json({ok:true});}));
 
 app.post('/api/orders', api(async (req, res) => {
   const items = Array.isArray(req.body.items) ? req.body.items : [];
@@ -524,10 +589,16 @@ app.post('/api/orders', api(async (req, res) => {
   const settings = await getSettings();
   const subtotal = safeItems.reduce((sum, i) => sum + i.lineTotal, 0);
   const fulfillment = req.body.fulfillment === 'pickup' ? 'pickup' : 'delivery';
-  const deliveryFee = fulfillment === 'delivery' && settings.deliveryEnabled ? Number(settings.deliveryFee || 0) : 0;
-  if (Number(settings.minimumOrder || 0) > 0 && subtotal < Number(settings.minimumOrder)) return res.status(400).json({ error: `الحد الأدنى للطلب ${settings.minimumOrder} ${settings.currency}` });
+  if (fulfillment === 'delivery' && settings.deliveryEnabled === false) return res.status(400).json({ error: 'التوصيل غير متاح حاليًا' });
+  if (fulfillment === 'pickup' && settings.pickupEnabled === false) return res.status(400).json({ error: 'الاستلام من المكان غير متاح حاليًا' });
+  let selectedArea = null;
+  if (fulfillment === 'delivery' && mongoose.Types.ObjectId.isValid(req.body.areaId)) selectedArea = await DeliveryArea.findOne({ _id: req.body.areaId, isActive: true }).lean();
+  const deliveryFee = fulfillment === 'delivery' && settings.deliveryEnabled ? Number(selectedArea?.fee ?? settings.deliveryFee ?? 0) : 0;
+  const minimumOrder = Math.max(Number(settings.minimumOrder || 0), Number(selectedArea?.minimumOrder || 0));
+  if (minimumOrder > 0 && subtotal < minimumOrder) return res.status(400).json({ error: `الحد الأدنى للطلب ${minimumOrder} ${settings.currency}` });
+  const areaName = selectedArea?.name || cleanString(req.body.area, 120);
   const orderNumber = `MH-${Date.now().toString().slice(-8)}-${crypto.randomInt(10, 99)}`;
-  const doc = await Order.create({ orderNumber, customerName: cleanString(req.body.customerName, 120), customerPhone: cleanString(req.body.customerPhone, 50), customerAddress: cleanString(req.body.customerAddress, 300), area: cleanString(req.body.area, 120), notes: cleanString(req.body.notes, 700), fulfillment, items: safeItems, subtotal, deliveryFee, total: subtotal + deliveryFee });
+  const doc = await Order.create({ orderNumber, customerName: cleanString(req.body.customerName, 120), customerPhone: cleanString(req.body.customerPhone, 50), customerAddress: cleanString(req.body.customerAddress, 300), area: areaName, notes: cleanString(req.body.notes, 700), fulfillment, items: safeItems, subtotal, deliveryFee, total: subtotal + deliveryFee });
   await logActivity('order_create', orderNumber, 'customer');
   res.status(201).json({ orderNumber: doc.orderNumber, subtotal: doc.subtotal, deliveryFee: doc.deliveryFee, total: doc.total, status: doc.status, whatsappNumber: settings.whatsappNumber, currency: settings.currency });
 }));
@@ -538,7 +609,7 @@ app.get('/api/orders', auth, api(async (req, res) => {
 app.put('/api/orders/:id', auth, api(async (req, res) => {
   const allowedStatuses = ['new','contacted','preparing','out_for_delivery','delivered','cancelled'];
   if (!allowedStatuses.includes(req.body.status)) return res.status(400).json({ error: 'حالة غير صحيحة' });
-  const doc = await Order.findByIdAndUpdate(req.params.id, { status: req.body.status, updatedAt: new Date() }, { new: true }); if (!doc) return res.status(404).json({ error: 'الطلب غير موجود' }); res.json(doc);
+  const doc = await Order.findByIdAndUpdate(req.params.id, { status: req.body.status, updatedAt: new Date() }, { new: true }); if (!doc) return res.status(404).json({ error: 'الطلب غير موجود' }); await logActivity('order_status', `${doc.orderNumber} -> ${req.body.status}`, req.user.username); res.json(doc);
 }));
 
 app.post('/api/analytics/track', api(async (req, res) => {
@@ -607,10 +678,10 @@ app.get('/api/reports/summary', auth, api(async (req, res) => {
 }));
 
 app.get('/api/admin/dashboard', auth, api(async (req, res) => {
-  const [products, categories, gallery, orders, newOrders, latestOrder] = await Promise.all([
-    Product.countDocuments(), Category.countDocuments(), Gallery.countDocuments(), Order.countDocuments(), Order.countDocuments({ status: 'new' }), Order.findOne().sort({ createdAt: -1 }).lean()
+  const [products, categories, gallery, orders, newOrders, latestOrder, deliveryAreas, recentActivity] = await Promise.all([
+    Product.countDocuments(), Category.countDocuments(), Gallery.countDocuments(), Order.countDocuments(), Order.countDocuments({ status: 'new' }), Order.findOne().sort({ createdAt: -1 }).lean(), DeliveryArea.countDocuments({ isActive: true }), ActivityLog.find({}).sort({ createdAt: -1 }).limit(8).lean()
   ]);
-  res.json({ products, categories, gallery, orders, newOrders, latestOrder, cloud: { database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected', cloudinary: hasCloudinary ? 'configured' : 'not_configured', pos: process.env.POS_API_KEY ? 'ready' : 'needs_key', environment: process.env.VERCEL ? 'production' : 'development' } });
+  res.json({ products, categories, gallery, orders, newOrders, latestOrder, deliveryAreas, recentActivity, cloud: { database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected', cloudinary: hasCloudinary ? 'configured' : 'not_configured', pos: process.env.POS_API_KEY ? 'ready' : 'needs_key', environment: process.env.VERCEL ? 'production' : 'development' } });
 }));
 
 
@@ -651,8 +722,8 @@ app.patch('/api/pos/orders/:id/status', posAuth, api(async (req,res)=>{
 }));
 
 app.get('/api/backup', auth, api(async (req, res) => {
-  const [products,categories,gallery,settings,orders,reviews,analytics] = await Promise.all([Product.find().lean(),Category.find().lean(),Gallery.find().lean(),Settings.find().lean(),Order.find().lean(),Review.find().lean(),Analytics.find().lean()]);
-  res.json({ version: 3, exportedAt: new Date().toISOString(), data: { products,categories,gallery,settings,orders,reviews,analytics } });
+  const [products,categories,gallery,settings,orders,reviews,analytics,deliveryAreas,activityLogs] = await Promise.all([Product.find().lean(),Category.find().lean(),Gallery.find().lean(),Settings.find().lean(),Order.find().lean(),Review.find().lean(),Analytics.find().lean(),DeliveryArea.find().lean(),ActivityLog.find().sort({createdAt:-1}).limit(1000).lean()]);
+  res.json({ version: 4, exportedAt: new Date().toISOString(), data: { products,categories,gallery,settings,orders,reviews,analytics,deliveryAreas,activityLogs } });
 }));
 
 app.post('/api/restore', auth, api(async (req, res) => {
@@ -660,7 +731,7 @@ app.post('/api/restore', auth, api(async (req, res) => {
   if (!payload || typeof payload !== 'object') return res.status(400).json({ error: 'ملف النسخة الاحتياطية غير صالح' });
   const collections = [
     ['products', Product], ['categories', Category], ['gallery', Gallery],
-    ['settings', Settings], ['orders', Order], ['reviews', Review], ['analytics', Analytics]
+    ['settings', Settings], ['orders', Order], ['reviews', Review], ['analytics', Analytics], ['deliveryAreas', DeliveryArea], ['activityLogs', ActivityLog]
   ];
   for (const [key, Model] of collections) {
     if (!Array.isArray(payload[key])) continue;
@@ -672,8 +743,8 @@ app.post('/api/restore', auth, api(async (req, res) => {
 }));
 
 function sendStatic(file) { return (req, res) => res.sendFile(path.join(ROOT, file)); }
-app.get('/products', sendStatic('products_page.html'));
-app.get('/menu', sendStatic('products_page.html'));
+app.get('/products', sendStatic('menu.html'));
+app.get('/menu', sendStatic('menu.html'));
 app.get('/gallery', sendStatic('gallery.html'));
 app.get('/services', sendStatic('services.html'));
 app.get('/admin', sendStatic('admin.html'));
