@@ -562,10 +562,10 @@ app.put('/api/products/:id', auth, api(async (req, res) => {
   }
   const oldMainId=current.mainImagePublicId||''; const newMainId=Object.prototype.hasOwnProperty.call(update,'mainImagePublicId')?cleanString(update.mainImagePublicId,300):oldMainId;
   const oldAdditional=(current.additionalImages||[]).map(x=>x.publicId).filter(Boolean); const newAdditional=Object.prototype.hasOwnProperty.call(update,'additionalImages')?(update.additionalImages||[]).map(x=>x.publicId).filter(Boolean):oldAdditional;
+  const oldImageIds=[oldMainId,...oldAdditional].filter(Boolean); const newImageIds=[newMainId,...newAdditional].filter(Boolean);
   const doc = await Product.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
   if (hasCloudinary) {
-    if (oldMainId && oldMainId !== newMainId) cloudinary.uploader.destroy(oldMainId).catch(()=>{});
-    oldAdditional.filter(id=>!newAdditional.includes(id)).forEach(id=>cloudinary.uploader.destroy(id).catch(()=>{}));
+    [...new Set(oldImageIds)].filter(id=>!newImageIds.includes(id)).forEach(id=>cloudinary.uploader.destroy(id).catch(()=>{}));
   }
   await logActivity('product_update', doc.title, req.user.username); res.json(doc);
 }));
