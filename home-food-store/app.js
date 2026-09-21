@@ -334,6 +334,20 @@
     observeReveal();
   }
 
+
+  function setupCustomerReviewForm(){
+    const form=qs('#customerReviewForm'), msg=qs('#reviewSubmitMessage'); if(!form)return;
+    form.addEventListener('submit',async e=>{
+      e.preventDefault(); const btn=e.submitter; const fd=new FormData(form);
+      const body={name:String(fd.get('name')||'').trim(),rating:Number(fd.get('rating')||5),text:String(fd.get('text')||'').trim(),website:String(fd.get('website')||'')};
+      if(body.name.length<2){if(msg)msg.textContent='اكتب اسمك بشكل صحيح.';return;}
+      if(body.text.length<5){if(msg)msg.textContent='اكتب رأيك في 5 حروف على الأقل.';return;}
+      try{if(btn){btn.disabled=true;btn.textContent='جاري الإرسال...';}const res=await fetch(`${API}/reviews/submit`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||'تعذر إرسال الرأي');form.reset();if(msg)msg.textContent='شكرًا ❤️ تم إرسال رأيك للإدارة للمراجعة قبل النشر.';track('review_submit','customer');}
+      catch(err){if(msg)msg.textContent=err.message||'تعذر إرسال الرأي، حاول مرة أخرى.';}
+      finally{if(btn){btn.disabled=false;btn.textContent='إرسال الرأي للمراجعة';}}
+    });
+  }
+
   function renderHome() {
     const catHost=qs('#homeCategories');
     if(catHost) catHost.innerHTML=state.categories.slice(0,8).map(c=>`<a class="category-card reveal" href="/menu?category=${encodeURIComponent(c.name)}"><img loading="lazy" src="${esc(c.image||'/assets/food/meal.svg')}" alt="${esc(c.name)}"><div class="category-content"><h3>${esc(c.name)}</h3><span>شوف الأصناف ←</span></div></a>`).join('');
@@ -391,7 +405,7 @@
   function setupPwa(){if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));}
 
   async function init() {
-    setupSharedUI(); setupNav(); setupPwa(); updateCartCount();
+    setupSharedUI(); setupNav(); setupPwa(); setupCustomerReviewForm(); updateCartCount();
     const [settings,categories,products,gallery,services,reviews,deliveryAreas]=await Promise.all([
       safeApi('/settings',demo.settings),safeApi('/categories',demo.categories),safeApi('/products',demo.products),safeApi('/gallery',demo.gallery),safeApi('/services',demo.services),safeApi('/reviews',demo.reviews),safeApi('/delivery-areas',[])
     ]);

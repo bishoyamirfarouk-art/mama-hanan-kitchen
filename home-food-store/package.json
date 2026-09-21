@@ -1,8 +1,8 @@
 {
   "name": "mama-hanan-kitchen",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
-  "description": "مطبخ ماما حنان - cloud food ordering with flexible admin, services CMS, reports, POS API and WebP image pipeline",
+  "description": "مطبخ ماما حنان - cloud food ordering with flexible admin, services CMS, moderated customer reviews, reports, POS API and WebP image pipeline",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node server/index.js",

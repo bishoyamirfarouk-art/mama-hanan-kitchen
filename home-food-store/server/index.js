@@ -105,7 +105,7 @@ function apiError(err) {
     return { status: 400, message: first?.message || 'راجع البيانات المدخلة.' };
   }
   if (err.name === 'CastError') return { status: 400, message: 'بيانات غير صحيحة.' };
-  return { status: 500, message: 'تعذر تنفيذ العملية. راجع البيانات وحاول مرة أخرى.' };
+  return { status: 500, message: `تعذر تنفيذ العملية${err?.message ? `: ${String(err.message).slice(0,160)}` : ''}` };
 }
 
 const adminUserSchema = new mongoose.Schema({
@@ -158,7 +158,7 @@ const productSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
-productSchema.pre('save', function(next) { this.updatedAt = new Date(); next(); });
+productSchema.pre('save', function() { this.updatedAt = new Date(); });
 const Product = mongoose.models.Product || mongoose.model('Product', productSchema);
 
 const gallerySchema = new mongoose.Schema({
@@ -228,12 +228,15 @@ const orderSchema = new mongoose.Schema({
 const Order = mongoose.models.Order || mongoose.model('Order', orderSchema);
 
 const reviewSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  text: { type: String, required: true },
+  name: { type: String, required: true, trim: true },
+  text: { type: String, required: true, trim: true },
   rating: { type: Number, min: 1, max: 5, default: 5 },
-  isActive: { type: Boolean, default: true },
+  status: { type: String, enum: ['pending','approved','rejected'], default: 'approved', index: true },
+  source: { type: String, enum: ['admin','customer'], default: 'admin' },
+  isActive: { type: Boolean, default: true, index: true },
   sortOrder: { type: Number, default: 0 },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now, index: true },
+  updatedAt: { type: Date, default: Date.now }
 });
 const Review = mongoose.models.Review || mongoose.model('Review', reviewSchema);
 
@@ -688,16 +691,44 @@ app.get('/api/admin/activity', auth, api(async (req, res) => {
   res.json(await ActivityLog.find({}).sort({ createdAt: -1 }).limit(limit).lean());
 }));
 
-app.get('/api/reviews', api(async (req, res) => res.json(await Review.find({ isActive: true }).sort({ sortOrder: 1, createdAt: -1 }).limit(12).lean())));
-app.get('/api/admin/reviews', auth, api(async (req, res) => res.json(await Review.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean())));
+app.get('/api/reviews', api(async (req, res) => {
+  const filter = { isActive: true, $or: [{ status: 'approved' }, { status: { $exists: false } }] };
+  res.json(await Review.find(filter).sort({ sortOrder: 1, createdAt: -1 }).limit(12).lean());
+}));
+app.get('/api/admin/reviews', auth, api(async (req, res) => res.json(await Review.find({}).sort({ createdAt: -1, sortOrder: 1 }).lean())));
+
+// Public customer review submission. Customer reviews always wait for admin approval.
+app.post('/api/reviews/submit', api(async (req, res) => {
+  const name = cleanString(req.body.name, 120);
+  const text = cleanString(req.body.text, 700);
+  const rating = Math.max(1, Math.min(5, Number(req.body.rating || 5)));
+  const website = cleanString(req.body.website, 120); // honeypot
+  if (website) return res.status(201).json({ ok: true, pending: true });
+  if (name.length < 2) return res.status(400).json({ error: 'اكتب اسمك بشكل صحيح.' });
+  if (text.length < 5) return res.status(400).json({ error: 'اكتب رأيك في 5 حروف على الأقل.' });
+  const doc = await Review.create({ name, text, rating, status: 'pending', source: 'customer', isActive: false, sortOrder: 0, updatedAt: new Date() });
+  await logActivity('review_submission', `رأي جديد بانتظار المراجعة من ${name}`, 'customer');
+  res.status(201).json({ ok: true, pending: true, id: doc._id });
+}));
+
 app.post('/api/reviews', auth, api(async (req, res) => {
   const name=cleanString(req.body.name,120), text=cleanString(req.body.text,700); if(!name||!text)return res.status(400).json({error:'الاسم والرأي مطلوبان'});
-  const doc=await Review.create({name,text,rating:Math.max(1,Math.min(5,Number(req.body.rating||5))),sortOrder:Number(req.body.sortOrder||0),isActive:req.body.isActive!==false});
+  const status=['pending','approved','rejected'].includes(req.body.status)?req.body.status:'approved';
+  const doc=await Review.create({name,text,rating:Math.max(1,Math.min(5,Number(req.body.rating||5))),sortOrder:Number(req.body.sortOrder||0),status,source:'admin',isActive:status==='approved'&&req.body.isActive!==false,updatedAt:new Date()});
   await logActivity('review_create', name, req.user.username); res.status(201).json(doc);
 }));
 app.put('/api/reviews/:id', auth, api(async (req,res)=>{
-  const update={...req.body};delete update._id;delete update.createdAt;if(update.name)update.name=cleanString(update.name,120);if(update.text)update.text=cleanString(update.text,700);if(Object.prototype.hasOwnProperty.call(update,'rating'))update.rating=Math.max(1,Math.min(5,Number(update.rating||5)));
+  const update={...req.body,updatedAt:new Date()};delete update._id;delete update.createdAt;if(update.name)update.name=cleanString(update.name,120);if(update.text)update.text=cleanString(update.text,700);if(Object.prototype.hasOwnProperty.call(update,'rating'))update.rating=Math.max(1,Math.min(5,Number(update.rating||5)));
+  if(Object.prototype.hasOwnProperty.call(update,'status')&&!['pending','approved','rejected'].includes(update.status))return res.status(400).json({error:'حالة الرأي غير صحيحة'});
+  if(update.status==='approved') update.isActive=true;
+  if(update.status==='rejected') update.isActive=false;
   const doc=await Review.findByIdAndUpdate(req.params.id,update,{new:true,runValidators:true});if(!doc)return res.status(404).json({error:'الرأي غير موجود'});await logActivity('review_update',doc.name,req.user.username);res.json(doc);
+}));
+app.patch('/api/reviews/:id/moderate', auth, api(async (req,res)=>{
+  const status=String(req.body.status||''); if(!['approved','rejected','pending'].includes(status))return res.status(400).json({error:'حالة المراجعة غير صحيحة'});
+  const doc=await Review.findByIdAndUpdate(req.params.id,{status,isActive:status==='approved',updatedAt:new Date()},{new:true,runValidators:true});
+  if(!doc)return res.status(404).json({error:'الرأي غير موجود'});
+  await logActivity(status==='approved'?'review_approve':'review_moderate',`${doc.name} -> ${status}`,req.user.username);res.json(doc);
 }));
 app.delete('/api/reviews/:id', auth, api(async(req,res)=>{const doc=await Review.findByIdAndDelete(req.params.id);if(!doc)return res.status(404).json({error:'الرأي غير موجود'});await logActivity('review_delete',doc.name,req.user.username);res.json({ok:true});}));
 
@@ -809,10 +840,10 @@ app.get('/api/reports/summary', auth, api(async (req, res) => {
 }));
 
 app.get('/api/admin/dashboard', auth, api(async (req, res) => {
-  const [products, categories, gallery, services, orders, newOrders, latestOrder, deliveryAreas, recentActivity] = await Promise.all([
-    Product.countDocuments(), Category.countDocuments(), Gallery.countDocuments(), Service.countDocuments(), Order.countDocuments(), Order.countDocuments({ status: 'new' }), Order.findOne().sort({ createdAt: -1 }).lean(), DeliveryArea.countDocuments({ isActive: true }), ActivityLog.find({}).sort({ createdAt: -1 }).limit(8).lean()
+  const [products, categories, gallery, services, orders, newOrders, pendingReviews, latestOrder, deliveryAreas, recentActivity] = await Promise.all([
+    Product.countDocuments(), Category.countDocuments(), Gallery.countDocuments(), Service.countDocuments(), Order.countDocuments(), Order.countDocuments({ status: 'new' }), Review.countDocuments({ status: 'pending' }), Order.findOne().sort({ createdAt: -1 }).lean(), DeliveryArea.countDocuments({ isActive: true }), ActivityLog.find({}).sort({ createdAt: -1 }).limit(8).lean()
   ]);
-  res.json({ products, categories, gallery, services, orders, newOrders, latestOrder, deliveryAreas, recentActivity, cloud: { database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected', cloudinary: hasCloudinary ? 'configured' : 'not_configured', pos: process.env.POS_API_KEY ? 'ready' : 'needs_key', environment: process.env.VERCEL ? 'production' : 'development' } });
+  res.json({ products, categories, gallery, services, orders, newOrders, pendingReviews, latestOrder, deliveryAreas, recentActivity, cloud: { database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected', cloudinary: hasCloudinary ? 'configured' : 'not_configured', pos: process.env.POS_API_KEY ? 'ready' : 'needs_key', environment: process.env.VERCEL ? 'production' : 'development' } });
 }));
 
 
