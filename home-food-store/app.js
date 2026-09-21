@@ -9,7 +9,7 @@
     settings: {
       storeName: 'مطبخ ماما حنان', tagline: 'أكل بيتي بطعم زمان', heroTitle: 'أكل بيتي بطعم زمان',
       heroSubtitle: 'وصفات أصيلة، مكونات طازة، وأكل بيتعمل مخصوص علشان يوصلك بنفس إحساس لمة البيت.',
-      heroImage: '/assets/brand/hero-home.webp', storeLogo: '/assets/brand/logo-horizontal.png', whatsappNumber: '', whatsappGroupUrl: 'https://chat.whatsapp.com/KNTdkIdvpmAE4xasykWImf?s=sh&p=a&mlu=0&ilr=4', phoneNumber: '01211377826', address: '', openingHours: '', currency: 'ج.م', deliveryFee: 0, deliveryEnabled: true, pickupEnabled: true
+      heroImage: '/assets/brand/hero-home.webp', storeLogo: '/assets/brand/logo-horizontal.webp', whatsappNumber: '', whatsappGroupUrl: 'https://chat.whatsapp.com/KNTdkIdvpmAE4xasykWImf?s=sh&p=a&mlu=0&ilr=4', phoneNumber: '01211377826', address: '', openingHours: '', currency: 'ج.م', deliveryFee: 0, deliveryEnabled: true, pickupEnabled: true
     },
     categories: [
       { _id:'c1', name:'مشويات', slug:'grills', image:'/assets/food/photos/grill.webp' },
@@ -60,6 +60,13 @@
   function qs(s, el=document){ return el.querySelector(s); }
   function qsa(s, el=document){ return [...el.querySelectorAll(s)]; }
   function esc(v='') { const d=document.createElement('div'); d.textContent=String(v); return d.innerHTML; }
+  function imageUrl(url, width=900) {
+    const value=String(url||'').trim();
+    if(!value) return value;
+    if(!/https:\/\/res\.cloudinary\.com\//i.test(value) || !value.includes('/image/upload/')) return value;
+    if(value.includes('/image/upload/f_auto,q_auto')) return value;
+    return value.replace('/image/upload/', `/image/upload/f_auto,q_auto:eco,c_limit,w_${Math.max(80,Math.min(1800,Number(width)||900))}/`);
+  }
 
   async function fetchJson(url, options={}) {
     const res = await fetch(url, { headers:{ 'Content-Type':'application/json', ...(options.headers||{}) }, ...options });
@@ -139,7 +146,7 @@
     } else {
       host.innerHTML = state.cart.map((item,idx)=>`
         <div class="cart-item">
-          <img src="${esc(item.image)}" alt="${esc(item.title)}">
+          <img loading="lazy" decoding="async" src="${esc(imageUrl(item.image,180))}" alt="${esc(item.title)}">
           <div><h4>${esc(item.title)}</h4><div class="muted" style="font-size:.75rem">${esc(item.selectedVariant || '')}</div><div class="qty"><button data-qty-dec="${idx}">−</button><b>${item.quantity}</b><button data-qty-inc="${idx}">+</button></div></div>
           <div style="text-align:left"><strong>${money(item.unitPrice*item.quantity)}</strong><button class="btn btn-sm btn-ghost" data-remove="${idx}" style="display:block;margin-top:8px">حذف</button></div>
         </div>`).join('');
@@ -170,7 +177,7 @@
     const minPrice = variants.length ? Math.min(...variants.map(v=>Number(v.price))) : Number(p.price||0);
     const select = variants.length > 1 ? `<select class="select" data-variant-for="${esc(p._id)}">${variants.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} — ${money(v.price)}</option>`).join('')}</select>` : variants.length===1 ? `<div class="muted" style="font-size:.8rem">${esc(variants[0].name)}</div>` : '';
     return `<article class="product-card reveal">
-      <div class="product-image"><img loading="lazy" src="${esc(p.mainImage||'/assets/food/meal.svg')}" alt="${esc(p.title)}">${p.offerLabel?`<span class="badge">${esc(p.offerLabel)}</span>`:''}${p.availableToday?'<span class="badge badge-left">متاح اليوم</span>':''}</div>
+      <div class="product-image"><img loading="lazy" decoding="async" src="${esc(imageUrl(p.mainImage||'/assets/food/meal.svg',560))}" alt="${esc(p.title)}">${p.offerLabel?`<span class="badge">${esc(p.offerLabel)}</span>`:''}${p.availableToday?'<span class="badge badge-left">متاح اليوم</span>':''}</div>
       <div class="product-body"><h3>${esc(p.title)}</h3><div class="product-desc">${esc(p.shortDescription||'')}</div><div class="price-row"><span class="price">${variants.length>1?'يبدأ من ':''}${money(minPrice)}</span>${p.oldPrice?`<span class="old-price">${money(p.oldPrice)}</span>`:''}</div>${select}<div class="product-meta">${p.preparationTime?`<span>⏱️ ${esc(p.preparationTime)}</span>`:''}${p.serves?`<span>👥 ${esc(p.serves)}</span>`:''}</div><div class="product-actions"><button class="btn btn-primary" data-add="${esc(p._id)}" ${!p.isAvailable?'disabled':''}>${p.isAvailable?'أضف للطلب':'غير متاح'}</button><button class="btn btn-ghost" data-details="${esc(p._id)}">التفاصيل</button></div></div>
     </article>`;
   }
@@ -188,8 +195,8 @@
     track('product_view', p.title);
     const variants=Array.isArray(p.variants)?p.variants:[];
     const images=[p.mainImage,...(Array.isArray(p.additionalImages)?p.additionalImages.map(x=>x.url):[])].filter(Boolean);
-    qs('#productModalBody').innerHTML = `<div class="product-modal-grid"><div><img id="productModalMainImage" src="${esc(images[0]||'/assets/food/photos/chicken.webp')}" alt="${esc(p.title)}">${images.length>1?`<div class="product-modal-thumbs">${images.map((src,i)=>`<button type="button" class="product-modal-thumb ${i===0?'active':''}" data-product-thumb="${i}"><img src="${esc(src)}" alt=""></button>`).join('')}</div>`:''}</div><div><span class="eyebrow">${esc(p.category)}</span><h2>${esc(p.title)}</h2><p class="muted">${esc(p.description||p.shortDescription||'')}</p>${variants.length?`<div class="form-group"><label>اختر الحجم</label><select class="select" id="modalVariant">${variants.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} — ${money(v.price)}</option>`).join('')}</select></div>`:`<div class="price" style="margin:14px 0">${money(p.price)}</div>`}<div class="product-meta" style="margin:14px 0">${p.preparationTime?`<span>⏱️ ${esc(p.preparationTime)}</span>`:''}${p.serves?`<span>👥 ${esc(p.serves)}</span>`:''}</div><button class="btn btn-primary btn-block" id="modalAdd" ${!p.isAvailable?'disabled':''}>${p.isAvailable?'أضف للطلب':'غير متاح حاليًا'}</button></div></div>`;
-    qsa('[data-product-thumb]',qs('#productModalBody')).forEach(btn=>btn.onclick=()=>{const i=Number(btn.dataset.productThumb);qs('#productModalMainImage').src=images[i];qsa('[data-product-thumb]',qs('#productModalBody')).forEach(x=>x.classList.toggle('active',x===btn));});
+    qs('#productModalBody').innerHTML = `<div class="product-modal-grid"><div><img id="productModalMainImage" decoding="async" src="${esc(imageUrl(images[0]||'/assets/food/photos/chicken.webp',1200))}" alt="${esc(p.title)}">${images.length>1?`<div class="product-modal-thumbs">${images.map((src,i)=>`<button type="button" class="product-modal-thumb ${i===0?'active':''}" data-product-thumb="${i}"><img loading="lazy" decoding="async" src="${esc(imageUrl(src,220))}" alt=""></button>`).join('')}</div>`:''}</div><div><span class="eyebrow">${esc(p.category)}</span><h2>${esc(p.title)}</h2><p class="muted">${esc(p.description||p.shortDescription||'')}</p>${variants.length?`<div class="form-group"><label>اختر الحجم</label><select class="select" id="modalVariant">${variants.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} — ${money(v.price)}</option>`).join('')}</select></div>`:`<div class="price" style="margin:14px 0">${money(p.price)}</div>`}<div class="product-meta" style="margin:14px 0">${p.preparationTime?`<span>⏱️ ${esc(p.preparationTime)}</span>`:''}${p.serves?`<span>👥 ${esc(p.serves)}</span>`:''}</div><button class="btn btn-primary btn-block" id="modalAdd" ${!p.isAvailable?'disabled':''}>${p.isAvailable?'أضف للطلب':'غير متاح حاليًا'}</button></div></div>`;
+    qsa('[data-product-thumb]',qs('#productModalBody')).forEach(btn=>btn.onclick=()=>{const i=Number(btn.dataset.productThumb);qs('#productModalMainImage').src=imageUrl(images[i],1200);qsa('[data-product-thumb]',qs('#productModalBody')).forEach(x=>x.classList.toggle('active',x===btn));});
     qs('#modalAdd')?.addEventListener('click',()=>{addToCart(p,qs('#modalVariant')?.value||variants[0]?.name||'');closeModal('productModal');});
     openModal('productModal');
   }
@@ -258,21 +265,21 @@
     finally { if(btn){btn.disabled=false;btn.textContent=String(state.settings.whatsappNumber||'').replace(/\D/g,'')?'تسجيل الطلب وفتحه على واتساب':'تأكيد الطلب';} }
   }
 
-  function galleryCard(item, index) { return `<figure class="gallery-item reveal" data-gallery-index="${index}"><img loading="lazy" src="${esc(item.image)}" alt="${esc(item.title||'صورة وجبة')}"><figcaption class="gallery-caption">${esc(item.title||item.category||'')}</figcaption></figure>`; }
+  function galleryCard(item, index) { return `<figure class="gallery-item reveal" data-gallery-index="${index}"><img loading="lazy" decoding="async" src="${esc(imageUrl(item.image,900))}" alt="${esc(item.title||'صورة وجبة')}"><figcaption class="gallery-caption">${esc(item.title||item.category||'')}</figcaption></figure>`; }
   function bindGallery(host, items) {
     state.galleryVisible = items;
     qsa('[data-gallery-index]',host).forEach(el => el.onclick=()=>openLightbox(Number(el.dataset.galleryIndex)));
     observeReveal();
   }
   function openLightbox(index){ state.lightboxIndex=index; updateLightbox(); openModal('lightboxModal'); }
-  function updateLightbox(){ const item=state.galleryVisible[state.lightboxIndex]; if(item) qs('#lbImage').src=item.image; }
+  function updateLightbox(){ const item=state.galleryVisible[state.lightboxIndex]; if(item) qs('#lbImage').src=imageUrl(item.image,1500); }
   function moveLightbox(delta){ if(!state.galleryVisible.length)return; state.lightboxIndex=(state.lightboxIndex+delta+state.galleryVisible.length)%state.galleryVisible.length;updateLightbox(); }
 
   function applySettings() {
     const s=state.settings || {};
     const storeName=s.storeName||CFG.fallbackStoreName||'مطبخ ماما حنان';
     qsa('[data-store-name]').forEach(el=>el.textContent=storeName);
-    qsa('[data-store-logo]').forEach(el=>el.src=s.storeLogo||'/assets/brand/logo-horizontal.png');
+    qsa('[data-store-logo]').forEach(el=>{el.src=imageUrl(s.storeLogo||'/assets/brand/logo-horizontal.webp',640);el.decoding='async';});
     qsa('[data-tagline]').forEach(el=>el.textContent=s.tagline||'أكل بيتي بطعم زمان');
 
     const toggleText=(selector,value)=>qsa(selector).forEach(el=>{const has=Boolean(String(value||'').trim());el.hidden=!has;if(has)el.textContent=value;});
@@ -285,8 +292,19 @@
 
     if(qs('[data-hero-title]')) qs('[data-hero-title]').textContent=s.heroTitle||'أكل بيتي بطعم زمان';
     if(qs('[data-hero-subtitle]')) qs('[data-hero-subtitle]').textContent=s.heroSubtitle||'';
-    qsa('[data-hero-image]').forEach(img=>{img.src=s.heroImage||'/assets/brand/hero-home.webp';});
-    if(qs('[data-hero-bg]') && s.heroImage) qs('[data-hero-bg]').style.backgroundImage=`linear-gradient(90deg,rgba(23,19,17,.98) 12%,rgba(23,19,17,.83) 48%,rgba(23,19,17,.36) 100%),url("${String(s.heroImage).replace(/"/g,'')}")`;
+    qsa('[data-hero-image]').forEach(img=>{
+      const hero=s.heroImage||'/assets/brand/hero-home.webp';
+      if(hero==='/assets/brand/hero-home.webp'||hero==='/assets/brand/hero-home-1600.webp'){
+        img.src='/assets/brand/hero-home-1600.webp';
+        img.srcset='/assets/brand/hero-home-960.webp 960w, /assets/brand/hero-home-1600.webp 1600w';
+        img.sizes='(max-width:700px) 100vw, min(1480px, 100vw)';
+      }else{
+        img.src=imageUrl(hero,1600);
+        img.removeAttribute('srcset'); img.removeAttribute('sizes');
+      }
+      img.decoding='async';
+    });
+    if(qs('[data-hero-bg]') && s.heroImage) qs('[data-hero-bg]').style.backgroundImage=`linear-gradient(90deg,rgba(23,19,17,.98) 12%,rgba(23,19,17,.83) 48%,rgba(23,19,17,.36) 100%),url("${imageUrl(String(s.heroImage).replace(/"/g,''),1600)}")`;
 
     const phone=String(s.whatsappNumber||'').replace(/\D/g,'');
     const groupUrl=String(s.whatsappGroupUrl||'').trim();
@@ -328,7 +346,7 @@
     const host=qs('#servicesGrid'); if(!host)return;
     const list=(Array.isArray(state.services)?state.services:[]).filter(x=>x&&x.isActive!==false);
     host.innerHTML=(list.length?list:demo.services).map(service=>{
-      const href=serviceHref(service); const external=/^https?:/i.test(href); const visual=service.image?`<img loading="lazy" src="${esc(service.image)}" alt="${esc(service.title)}">`:`<span>${esc(service.icon||'🍽️')}</span>`;
+      const href=serviceHref(service); const external=/^https?:/i.test(href); const visual=service.image?`<img loading="lazy" decoding="async" src="${esc(imageUrl(service.image,720))}" alt="${esc(service.title)}">`:`<span>${esc(service.icon||'🍽️')}</span>`;
       return `<article class="service-card reveal"><div class="visual service-visual">${visual}</div><div class="content"><h3>${esc(service.title)}</h3><p>${esc(service.description||'')}</p>${href?`<a class="btn btn-ghost" href="${esc(href)}" ${external?'target="_blank" rel="noopener"':''}>${esc(service.ctaLabel||'تواصل معنا')}</a>`:''}</div></article>`;
     }).join('');
     observeReveal();
@@ -350,7 +368,7 @@
 
   function renderHome() {
     const catHost=qs('#homeCategories');
-    if(catHost) catHost.innerHTML=state.categories.slice(0,8).map(c=>`<a class="category-card reveal" href="/menu?category=${encodeURIComponent(c.name)}"><img loading="lazy" src="${esc(c.image||'/assets/food/meal.svg')}" alt="${esc(c.name)}"><div class="category-content"><h3>${esc(c.name)}</h3><span>شوف الأصناف ←</span></div></a>`).join('');
+    if(catHost) catHost.innerHTML=state.categories.slice(0,8).map(c=>`<a class="category-card reveal" href="/menu?category=${encodeURIComponent(c.name)}"><img loading="lazy" decoding="async" src="${esc(imageUrl(c.image||'/assets/food/meal.svg',720))}" alt="${esc(c.name)}"><div class="category-content"><h3>${esc(c.name)}</h3><span>شوف الأصناف ←</span></div></a>`).join('');
     const feat=state.products.filter(p=>p.featured&&p.availableToday&&!p.isHidden).slice(0,8);
     const pHost=qs('#featuredProducts'); if(pHost){pHost.innerHTML=(feat.length?feat:state.products.slice(0,4)).map(productCard).join('');bindProductCards(pHost);}
     const gHost=qs('#homeGallery'); if(gHost){const items=state.gallery.slice(0,8);gHost.innerHTML=items.map((g,i)=>galleryCard(g,i)).join('');bindGallery(gHost,items);}

@@ -44,7 +44,16 @@
   ],
   "headers": [
     {
-      "source": "/(.*)\\.(css|js|svg|png|jpg|jpeg|webp|ico)",
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=604800"
+        }
+      ]
+    },
+    {
+      "source": "/(.*)\\.(css|js|svg|ico)",
       "headers": [
         {
           "key": "Cache-Control",

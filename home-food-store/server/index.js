@@ -180,7 +180,7 @@ const settingsSchema = new mongoose.Schema({
   heroSubtitle: { type: String, default: 'وصفات أصيلة، مكونات طازة، وأكل بيتعمل مخصوص علشان يوصلك بنفس إحساس لمة البيت.' },
   heroImage: { type: String, default: '/assets/brand/hero-home.webp' },
   heroImagePublicId: { type: String, default: '' },
-  storeLogo: { type: String, default: '/assets/brand/logo-horizontal.png' },
+  storeLogo: { type: String, default: '/assets/brand/logo-horizontal.webp' },
   storeLogoPublicId: { type: String, default: '' },
   whatsappNumber: { type: String, default: '' },
   whatsappGroupUrl: { type: String, default: 'https://chat.whatsapp.com/KNTdkIdvpmAE4xasykWImf?s=sh&p=a&mlu=0&ilr=4' },
@@ -295,7 +295,7 @@ const BRAND_DEFAULTS = Object.freeze({
   heroTitle: 'أكل بيتي بطعم زمان',
   heroSubtitle: 'وصفات أصيلة، مكونات طازة، وأكل بيتعمل مخصوص علشان يوصلك بنفس إحساس لمة البيت.',
   heroImage: '/assets/brand/hero-home.webp',
-  storeLogo: '/assets/brand/logo-horizontal.png',
+  storeLogo: '/assets/brand/logo-horizontal.webp',
   phoneNumber: '01211377826',
   whatsappGroupUrl: 'https://chat.whatsapp.com/KNTdkIdvpmAE4xasykWImf?s=sh&p=a&mlu=0&ilr=4'
 });
@@ -331,7 +331,7 @@ async function ensureInitialContent() {
     if (!settings.heroTitle || settings.heroTitle.includes('طعم البيت')) update.heroTitle = BRAND_DEFAULTS.heroTitle;
     if (!settings.heroSubtitle || settings.heroSubtitle.includes('أكل بيتي طازة يوميًا')) update.heroSubtitle = BRAND_DEFAULTS.heroSubtitle;
     if (!settings.heroImage || settings.heroImage === '/assets/food/meal.svg') update.heroImage = BRAND_DEFAULTS.heroImage;
-    if (!settings.storeLogo || settings.storeLogo === '/assets/food/logo.svg') update.storeLogo = BRAND_DEFAULTS.storeLogo;
+    if (!settings.storeLogo || settings.storeLogo === '/assets/food/logo.svg' || settings.storeLogo === '/assets/brand/logo-horizontal.png') update.storeLogo = BRAND_DEFAULTS.storeLogo;
     if (!settings.phoneNumber) update.phoneNumber = BRAND_DEFAULTS.phoneNumber;
     if (!settings.whatsappGroupUrl) update.whatsappGroupUrl = BRAND_DEFAULTS.whatsappGroupUrl;
     if (Object.keys(update).length) {
@@ -615,7 +615,7 @@ app.post('/api/upload', auth, api(async (req, res) => {
     folder,
     resource_type: 'image',
     format: 'webp',
-    transformation: [{ width: 2000, crop: 'limit', quality: 'auto:good' }]
+    transformation: [{ width: 1600, crop: 'limit', quality: 'auto:good' }]
   });
   res.json({ url: result.secure_url, publicId: result.public_id, width: result.width, height: result.height, format: result.format || 'webp', bytes: result.bytes || 0 });
 }));

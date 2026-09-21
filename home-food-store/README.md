@@ -15,10 +15,10 @@
 `assets/brand/`
 
 وتشمل:
-- `logo-horizontal.png` للهيدر.
-- `logo-badge.png` للأقسام التعريفية والفوتر.
-- `logo-icon.png` للأيقونات والصفحات الداخلية.
-- `hero-home.webp` للواجهة الرئيسية.
+- `logo-horizontal.webp` للهيدر.
+- `logo-badge.webp` للأقسام التعريفية والفوتر.
+- `logo-icon.webp` للأيقونات والصفحات الداخلية.
+- `hero-home-960.webp` و`hero-home-1600.webp` للواجهة الرئيسية حسب حجم الشاشة.
 - `og-home.jpg` لمشاركة الروابط.
 - `icon-192.png` و`icon-512.png` للـPWA.
 - `favicon.png` للمتصفح.
