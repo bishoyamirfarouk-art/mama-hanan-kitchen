@@ -82,6 +82,32 @@ function slugify(value) {
 }
 function escapeRegex(value) { return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
+async function makeUniqueSlug(Model, rawValue, fallbackPrefix, excludeId = null) {
+  const base = slugify(rawValue) || `${fallbackPrefix}-${Date.now()}`;
+  let slug = base;
+  let n = 2;
+  const query = () => ({ slug, ...(excludeId ? { _id: { $ne: excludeId } } : {}) });
+  while (await Model.exists(query())) slug = `${base}-${n++}`;
+  return slug;
+}
+
+function apiError(err) {
+  if (!err) return { status: 500, message: 'حدث خطأ غير متوقع في السيرفر' };
+  if (/not configured/i.test(err.message || '')) return { status: 503, message: err.message };
+  if (err.code === 11000) {
+    const field = Object.keys(err.keyPattern || err.keyValue || {})[0] || '';
+    if (field === 'slug') return { status: 409, message: 'يوجد عنصر بنفس الاسم. تم منع التكرار، جرّب الحفظ مرة أخرى أو غيّر الاسم.' };
+    if (field === 'name') return { status: 409, message: 'الاسم مستخدم بالفعل.' };
+    return { status: 409, message: 'هذه البيانات موجودة بالفعل.' };
+  }
+  if (err.name === 'ValidationError') {
+    const first = Object.values(err.errors || {})[0];
+    return { status: 400, message: first?.message || 'راجع البيانات المدخلة.' };
+  }
+  if (err.name === 'CastError') return { status: 400, message: 'بيانات غير صحيحة.' };
+  return { status: 500, message: 'تعذر تنفيذ العملية. راجع البيانات وحاول مرة أخرى.' };
+}
+
 const adminUserSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true, trim: true },
   passwordHash: { type: String, required: true },
@@ -96,6 +122,7 @@ const categorySchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true, trim: true },
   slug: { type: String, required: true, unique: true, trim: true },
   image: { type: String, default: '' },
+  imagePublicId: { type: String, default: '' },
   sortOrder: { type: Number, default: 0 },
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now }
@@ -152,7 +179,9 @@ const settingsSchema = new mongoose.Schema({
   heroTitle: { type: String, default: 'أكل بيتي بطعم زمان' },
   heroSubtitle: { type: String, default: 'وصفات أصيلة، مكونات طازة، وأكل بيتعمل مخصوص علشان يوصلك بنفس إحساس لمة البيت.' },
   heroImage: { type: String, default: '/assets/brand/hero-home.webp' },
+  heroImagePublicId: { type: String, default: '' },
   storeLogo: { type: String, default: '/assets/brand/logo-horizontal.png' },
+  storeLogoPublicId: { type: String, default: '' },
   whatsappNumber: { type: String, default: '' },
   whatsappGroupUrl: { type: String, default: 'https://chat.whatsapp.com/KNTdkIdvpmAE4xasykWImf?s=sh&p=a&mlu=0&ilr=4' },
   phoneNumber: { type: String, default: '01211377826' },
@@ -207,6 +236,22 @@ const reviewSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 const Review = mongoose.models.Review || mongoose.model('Review', reviewSchema);
+
+const serviceSchema = new mongoose.Schema({
+  title: { type: String, required: true, trim: true },
+  description: { type: String, default: '' },
+  icon: { type: String, default: '🍽️' },
+  image: { type: String, default: '' },
+  imagePublicId: { type: String, default: '' },
+  ctaLabel: { type: String, default: 'تواصل معنا' },
+  ctaType: { type: String, enum: ['whatsapp','group','phone','menu','custom','none'], default: 'whatsapp' },
+  ctaUrl: { type: String, default: '' },
+  sortOrder: { type: Number, default: 0 },
+  isActive: { type: Boolean, default: true, index: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+const Service = mongoose.models.Service || mongoose.model('Service', serviceSchema);
 
 const analyticsSchema = new mongoose.Schema({
   key: { type: String, default: 'main', unique: true },
@@ -343,6 +388,17 @@ async function ensureInitialContent() {
     Gallery.updateMany({ image: oldPath }, { $set: { image: newPath, updatedAt: new Date() } })
   ]));
 
+  if (await Service.countDocuments() === 0) {
+    await Service.insertMany([
+      { title:'عزومات وطلبات خاصة', description:'حدد عدد الأفراد، الأصناف والموعد، وننسق معاك الكميات المناسبة.', icon:'🎉', ctaLabel:'اطلب عرض', ctaType:'whatsapp', sortOrder:1 },
+      { title:'اشتراكات أسبوعية', description:'وجبات منظمة لأيام الأسبوع للأفراد أو العائلات حسب الاتفاق.', icon:'📅', ctaLabel:'اسأل عن الاشتراك', ctaType:'whatsapp', sortOrder:2 },
+      { title:'توصيل', description:'توصيل للمنزل برسوم حسب المنطقة ومكان الاستلام.', icon:'🛵', ctaLabel:'ابدأ طلبك', ctaType:'menu', sortOrder:3 },
+      { title:'مناسبات', description:'تجهيز سفرة أو بوفيه منزلي لكميات أكبر وترتيب مناسب للمناسبة.', icon:'🎂', ctaLabel:'كلمنا', ctaType:'whatsapp', sortOrder:4 },
+      { title:'وجبات شركات', description:'طلبات مجمعة ووجبات متكررة للفرق والمكاتب حسب الاتفاق.', icon:'🏢', ctaLabel:'اطلب التفاصيل', ctaType:'whatsapp', sortOrder:5 },
+      { title:'طلبات مخصوصة', description:'لو محتاج تعديل أو صنف بكمية معينة، ابعت التفاصيل ونراجع إمكانية التنفيذ.', icon:'👩‍🍳', ctaLabel:'ابعت طلبك', ctaType:'whatsapp', sortOrder:6 }
+    ]);
+  }
+
   if (await Review.countDocuments() === 0) {
     await Review.insertMany([
       { name:'عميلة ماما حنان', text:'الأكل وصل مرتب وساخن والطعم بيتي فعلًا.', rating:5, sortOrder:1 },
@@ -386,8 +442,8 @@ function api(handler) {
     try { await ensureDBConnection(); await handler(req, res, next); }
     catch (err) {
       console.error(err);
-      const status = /not configured/i.test(err.message) ? 503 : 500;
-      res.status(status).json({ error: status === 503 ? err.message : 'Server error' });
+      const out = apiError(err);
+      res.status(out.status).json({ error: out.message });
     }
   };
 }
@@ -412,11 +468,16 @@ app.get('/api/auth/me', auth, (req, res) => res.json({ username: req.user.userna
 
 app.get('/api/settings', api(async (req, res) => res.json(await getSettings())));
 app.put('/api/settings', auth, api(async (req, res) => {
-  const allowed = ['storeName','tagline','heroTitle','heroSubtitle','heroImage','storeLogo','whatsappNumber','whatsappGroupUrl','phoneNumber','address','googleMapsUrl','openingHours','facebookUrl','instagramUrl','tiktokUrl','deliveryEnabled','pickupEnabled','deliveryFee','minimumOrder','currency'];
+  const allowed = ['storeName','tagline','heroTitle','heroSubtitle','heroImage','heroImagePublicId','storeLogo','storeLogoPublicId','whatsappNumber','whatsappGroupUrl','phoneNumber','address','googleMapsUrl','openingHours','facebookUrl','instagramUrl','tiktokUrl','deliveryEnabled','pickupEnabled','deliveryFee','minimumOrder','currency'];
+  const current = await Settings.findOne({ key: 'main' }).lean();
   const update = {};
   for (const key of allowed) if (Object.prototype.hasOwnProperty.call(req.body, key)) update[key] = req.body[key];
   update.updatedAt = new Date();
   const doc = await Settings.findOneAndUpdate({ key: 'main' }, { $set: update, $setOnInsert: { key: 'main' } }, { new: true, upsert: true, setDefaultsOnInsert: true });
+  if (hasCloudinary && current) {
+    if (current.heroImagePublicId && Object.prototype.hasOwnProperty.call(update,'heroImagePublicId') && current.heroImagePublicId !== update.heroImagePublicId) cloudinary.uploader.destroy(current.heroImagePublicId).catch(()=>{});
+    if (current.storeLogoPublicId && Object.prototype.hasOwnProperty.call(update,'storeLogoPublicId') && current.storeLogoPublicId !== update.storeLogoPublicId) cloudinary.uploader.destroy(current.storeLogoPublicId).catch(()=>{});
+  }
   await logActivity('settings_update', 'Store settings updated', req.user.username);
   res.json(doc);
 }));
@@ -429,19 +490,26 @@ app.get('/api/admin/categories', auth, api(async (req, res) => {
 }));
 app.post('/api/categories', auth, api(async (req, res) => {
   const name = cleanString(req.body.name, 100); if (!name) return res.status(400).json({ error: 'اسم القسم مطلوب' });
-  const slug = slugify(req.body.slug || name) || `category-${Date.now()}`;
-  const doc = await Category.create({ name, slug, image: cleanString(req.body.image, 1000), sortOrder: Number(req.body.sortOrder || 0), isActive: req.body.isActive !== false });
+  const slug = await makeUniqueSlug(Category, req.body.slug || name, 'category');
+  const doc = await Category.create({ name, slug, image: cleanString(req.body.image, 1000), imagePublicId: cleanString(req.body.imagePublicId, 300), sortOrder: Number(req.body.sortOrder || 0), isActive: req.body.isActive !== false });
   await logActivity('category_create', name, req.user.username); res.status(201).json(doc);
 }));
 app.put('/api/categories/:id', auth, api(async (req, res) => {
+  const current = await Category.findById(req.params.id); if (!current) return res.status(404).json({ error: 'القسم غير موجود' });
   const update = { ...req.body }; delete update._id; delete update.createdAt;
   if (update.name) update.name = cleanString(update.name, 100);
-  if (update.slug) update.slug = slugify(update.slug);
+  update.slug = await makeUniqueSlug(Category, update.slug || update.name || current.name, 'category', req.params.id);
+  if (Object.prototype.hasOwnProperty.call(update,'image')) update.image = cleanString(update.image,1000);
+  if (Object.prototype.hasOwnProperty.call(update,'imagePublicId')) update.imagePublicId = cleanString(update.imagePublicId,300);
+  const oldPublicId = current.imagePublicId;
   const doc = await Category.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
-  if (!doc) return res.status(404).json({ error: 'القسم غير موجود' }); res.json(doc);
+  if (hasCloudinary && oldPublicId && Object.prototype.hasOwnProperty.call(update,'imagePublicId') && oldPublicId !== update.imagePublicId) cloudinary.uploader.destroy(oldPublicId).catch(()=>{});
+  await logActivity('category_update', doc.name, req.user.username); res.json(doc);
 }));
 app.delete('/api/categories/:id', auth, api(async (req, res) => {
-  const doc = await Category.findByIdAndDelete(req.params.id); if (!doc) return res.status(404).json({ error: 'القسم غير موجود' }); res.json({ ok: true });
+  const doc = await Category.findByIdAndDelete(req.params.id); if (!doc) return res.status(404).json({ error: 'القسم غير موجود' });
+  if (hasCloudinary && doc.imagePublicId) cloudinary.uploader.destroy(doc.imagePublicId).catch(()=>{});
+  await logActivity('category_delete', doc.name, req.user.username); res.json({ ok: true });
 }));
 
 app.get('/api/products', api(async (req, res) => {
@@ -463,23 +531,47 @@ app.get('/api/products/:id', api(async (req, res) => {
 }));
 app.post('/api/products', auth, api(async (req, res) => {
   const title = cleanString(req.body.title, 160); const category = cleanString(req.body.category, 100);
-  if (!title || !category || !req.body.mainImage) return res.status(400).json({ error: 'الاسم والقسم والصورة مطلوبون' });
-  const variants = Array.isArray(req.body.variants) ? req.body.variants.filter(v => v && v.name && Number(v.price) >= 0).map(v => ({ name: cleanString(v.name, 80), price: Number(v.price) })) : [];
+  if (!title || !category || !cleanString(req.body.mainImage, 1200)) return res.status(400).json({ error: 'الاسم والقسم والصورة مطلوبون' });
+  const variants = Array.isArray(req.body.variants) ? req.body.variants.filter(v => v && cleanString(v.name,80) && Number.isFinite(Number(v.price)) && Number(v.price) >= 0).map(v => ({ name: cleanString(v.name, 80), price: Number(v.price) })) : [];
   const basePrice = Number(req.body.price ?? variants[0]?.price ?? 0);
-  const doc = await Product.create({ ...req.body, title, category, slug: slugify(req.body.slug || title) || `meal-${Date.now()}`, variants, price: basePrice, updatedAt: new Date() });
+  if (!Number.isFinite(basePrice) || basePrice < 0) return res.status(400).json({ error: 'السعر الأساسي غير صحيح' });
+  const slug = await makeUniqueSlug(Product, req.body.slug || title, 'meal');
+  const additionalImages = Array.isArray(req.body.additionalImages) ? req.body.additionalImages.filter(x=>x&&x.url).map(x=>({url:cleanString(x.url,1200),publicId:cleanString(x.publicId,300)})) : [];
+  const payload = { ...req.body, title, category, slug, variants, additionalImages, price: basePrice, mainImage:cleanString(req.body.mainImage,1200), mainImagePublicId:cleanString(req.body.mainImagePublicId,300), updatedAt: new Date() };
+  if (payload.oldPrice === null || payload.oldPrice === '' || !Number.isFinite(Number(payload.oldPrice))) delete payload.oldPrice; else payload.oldPrice = Number(payload.oldPrice);
+  const doc = await Product.create(payload);
   await logActivity('product_create', title, req.user.username); res.status(201).json(doc);
 }));
 app.put('/api/products/:id', auth, api(async (req, res) => {
+  const current = await Product.findById(req.params.id); if (!current) return res.status(404).json({ error: 'الوجبة غير موجودة' });
   const update = { ...req.body, updatedAt: new Date() }; delete update._id; delete update.createdAt;
   if (update.title) update.title = cleanString(update.title, 160);
-  if (update.slug) update.slug = slugify(update.slug);
-  if (Array.isArray(update.variants)) update.variants = update.variants.filter(v => v && v.name && Number(v.price) >= 0).map(v => ({ name: cleanString(v.name, 80), price: Number(v.price) }));
+  if (Object.prototype.hasOwnProperty.call(update,'category')) update.category = cleanString(update.category,100);
+  if (Object.prototype.hasOwnProperty.call(update,'mainImage')) { update.mainImage = cleanString(update.mainImage,1200); if (!update.mainImage) return res.status(400).json({ error: 'صورة الوجبة مطلوبة' }); }
+  else if (!current.mainImage) return res.status(400).json({ error: 'صورة الوجبة مطلوبة' });
+  update.slug = await makeUniqueSlug(Product, update.slug || update.title || current.title, 'meal', req.params.id);
+  if (Array.isArray(update.variants)) update.variants = update.variants.filter(v => v && cleanString(v.name,80) && Number.isFinite(Number(v.price)) && Number(v.price) >= 0).map(v => ({ name: cleanString(v.name, 80), price: Number(v.price) }));
+  if (Array.isArray(update.additionalImages)) update.additionalImages = update.additionalImages.filter(x=>x&&x.url).map(x=>({url:cleanString(x.url,1200),publicId:cleanString(x.publicId,300)}));
+  if (Object.prototype.hasOwnProperty.call(update,'price')) { update.price=Number(update.price); if(!Number.isFinite(update.price)||update.price<0)return res.status(400).json({error:'السعر الأساسي غير صحيح'}); }
+  if (Object.prototype.hasOwnProperty.call(update,'oldPrice')) {
+    if (update.oldPrice === null || update.oldPrice === '') update.oldPrice = null;
+    else { update.oldPrice=Number(update.oldPrice); if(!Number.isFinite(update.oldPrice)||update.oldPrice<0)return res.status(400).json({error:'السعر قبل الخصم غير صحيح'}); }
+  }
+  const oldMainId=current.mainImagePublicId||''; const newMainId=Object.prototype.hasOwnProperty.call(update,'mainImagePublicId')?cleanString(update.mainImagePublicId,300):oldMainId;
+  const oldAdditional=(current.additionalImages||[]).map(x=>x.publicId).filter(Boolean); const newAdditional=Object.prototype.hasOwnProperty.call(update,'additionalImages')?(update.additionalImages||[]).map(x=>x.publicId).filter(Boolean):oldAdditional;
   const doc = await Product.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
-  if (!doc) return res.status(404).json({ error: 'الوجبة غير موجودة' }); await logActivity('product_update', doc.title, req.user.username); res.json(doc);
+  if (hasCloudinary) {
+    if (oldMainId && oldMainId !== newMainId) cloudinary.uploader.destroy(oldMainId).catch(()=>{});
+    oldAdditional.filter(id=>!newAdditional.includes(id)).forEach(id=>cloudinary.uploader.destroy(id).catch(()=>{}));
+  }
+  await logActivity('product_update', doc.title, req.user.username); res.json(doc);
 }));
 app.delete('/api/products/:id', auth, api(async (req, res) => {
   const doc = await Product.findByIdAndDelete(req.params.id); if (!doc) return res.status(404).json({ error: 'الوجبة غير موجودة' });
-  if (hasCloudinary && doc.mainImagePublicId) cloudinary.uploader.destroy(doc.mainImagePublicId).catch(() => {});
+  if (hasCloudinary) {
+    if (doc.mainImagePublicId) cloudinary.uploader.destroy(doc.mainImagePublicId).catch(() => {});
+    (doc.additionalImages||[]).map(x=>x.publicId).filter(Boolean).forEach(id=>cloudinary.uploader.destroy(id).catch(()=>{}));
+  }
   await logActivity('product_delete', doc.title, req.user.username); res.json({ ok: true });
 }));
 
@@ -497,12 +589,17 @@ app.post('/api/gallery', auth, api(async (req, res) => {
   res.status(201).json(doc);
 }));
 app.put('/api/gallery/:id', auth, api(async (req, res) => {
+  const current=await Gallery.findById(req.params.id); if(!current)return res.status(404).json({error:'الصورة غير موجودة'});
   const update = { ...req.body }; delete update._id; delete update.createdAt;
-  const doc = await Gallery.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true }); if (!doc) return res.status(404).json({ error: 'الصورة غير موجودة' }); res.json(doc);
+  const oldPublicId=current.cloudinaryPublicId||'';
+  const doc = await Gallery.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
+  if (hasCloudinary && oldPublicId && Object.prototype.hasOwnProperty.call(update,'cloudinaryPublicId') && oldPublicId !== update.cloudinaryPublicId) cloudinary.uploader.destroy(oldPublicId).catch(()=>{});
+  await logActivity('gallery_update', doc.title||'صورة', req.user.username); res.json(doc);
 }));
 app.delete('/api/gallery/:id', auth, api(async (req, res) => {
   const doc = await Gallery.findByIdAndDelete(req.params.id); if (!doc) return res.status(404).json({ error: 'الصورة غير موجودة' });
-  if (hasCloudinary && doc.cloudinaryPublicId) cloudinary.uploader.destroy(doc.cloudinaryPublicId).catch(() => {}); res.json({ ok: true });
+  if (hasCloudinary && doc.cloudinaryPublicId) cloudinary.uploader.destroy(doc.cloudinaryPublicId).catch(() => {});
+  await logActivity('gallery_delete', doc.title||'صورة', req.user.username); res.json({ ok: true });
 }));
 
 app.post('/api/upload', auth, api(async (req, res) => {
@@ -518,6 +615,40 @@ app.post('/api/upload', auth, api(async (req, res) => {
     transformation: [{ width: 2000, crop: 'limit', quality: 'auto:good' }]
   });
   res.json({ url: result.secure_url, publicId: result.public_id, width: result.width, height: result.height, format: result.format || 'webp', bytes: result.bytes || 0 });
+}));
+
+app.delete('/api/media', auth, api(async (req,res)=>{
+  const publicId=cleanString(req.body?.publicId,300);
+  if(!publicId)return res.status(400).json({error:'معرف الصورة مطلوب'});
+  if(!hasCloudinary)return res.status(503).json({error:'Cloudinary غير مربوط بعد'});
+  const result=await cloudinary.uploader.destroy(publicId);
+  await logActivity('media_delete', publicId, req.user.username);
+  res.json({ok:true,result:result.result||'unknown'});
+}));
+
+app.get('/api/services', api(async (req,res)=>{
+  res.json(await Service.find({isActive:true}).sort({sortOrder:1,createdAt:1}).lean());
+}));
+app.get('/api/admin/services', auth, api(async (req,res)=>{
+  res.json(await Service.find({}).sort({sortOrder:1,createdAt:1}).lean());
+}));
+app.post('/api/services', auth, api(async (req,res)=>{
+  const title=cleanString(req.body.title,140); if(!title)return res.status(400).json({error:'اسم الخدمة مطلوب'});
+  const doc=await Service.create({title,description:cleanString(req.body.description,1000),icon:cleanString(req.body.icon||'🍽️',20),image:cleanString(req.body.image,1200),imagePublicId:cleanString(req.body.imagePublicId,300),ctaLabel:cleanString(req.body.ctaLabel||'تواصل معنا',80),ctaType:['whatsapp','group','phone','menu','custom','none'].includes(req.body.ctaType)?req.body.ctaType:'whatsapp',ctaUrl:cleanString(req.body.ctaUrl,1200),sortOrder:Number(req.body.sortOrder||0),isActive:req.body.isActive!==false,updatedAt:new Date()});
+  await logActivity('service_create',title,req.user.username);res.status(201).json(doc);
+}));
+app.put('/api/services/:id', auth, api(async(req,res)=>{
+  const current=await Service.findById(req.params.id);if(!current)return res.status(404).json({error:'الخدمة غير موجودة'});
+  const update={...req.body,updatedAt:new Date()};delete update._id;delete update.createdAt;
+  if(update.title)update.title=cleanString(update.title,140);if(Object.prototype.hasOwnProperty.call(update,'description'))update.description=cleanString(update.description,1000);if(Object.prototype.hasOwnProperty.call(update,'icon'))update.icon=cleanString(update.icon,20);if(Object.prototype.hasOwnProperty.call(update,'image'))update.image=cleanString(update.image,1200);if(Object.prototype.hasOwnProperty.call(update,'imagePublicId'))update.imagePublicId=cleanString(update.imagePublicId,300);if(Object.prototype.hasOwnProperty.call(update,'ctaLabel'))update.ctaLabel=cleanString(update.ctaLabel,80);if(Object.prototype.hasOwnProperty.call(update,'ctaUrl'))update.ctaUrl=cleanString(update.ctaUrl,1200);if(Object.prototype.hasOwnProperty.call(update,'sortOrder'))update.sortOrder=Number(update.sortOrder||0);if(update.ctaType&&!['whatsapp','group','phone','menu','custom','none'].includes(update.ctaType))update.ctaType='whatsapp';
+  const oldPublicId=current.imagePublicId||'';const doc=await Service.findByIdAndUpdate(req.params.id,update,{new:true,runValidators:true});
+  if(hasCloudinary&&oldPublicId&&Object.prototype.hasOwnProperty.call(update,'imagePublicId')&&oldPublicId!==update.imagePublicId)cloudinary.uploader.destroy(oldPublicId).catch(()=>{});
+  await logActivity('service_update',doc.title,req.user.username);res.json(doc);
+}));
+app.delete('/api/services/:id', auth, api(async(req,res)=>{
+  const doc=await Service.findByIdAndDelete(req.params.id);if(!doc)return res.status(404).json({error:'الخدمة غير موجودة'});
+  if(hasCloudinary&&doc.imagePublicId)cloudinary.uploader.destroy(doc.imagePublicId).catch(()=>{});
+  await logActivity('service_delete',doc.title,req.user.username);res.json({ok:true});
 }));
 
 
@@ -678,10 +809,10 @@ app.get('/api/reports/summary', auth, api(async (req, res) => {
 }));
 
 app.get('/api/admin/dashboard', auth, api(async (req, res) => {
-  const [products, categories, gallery, orders, newOrders, latestOrder, deliveryAreas, recentActivity] = await Promise.all([
-    Product.countDocuments(), Category.countDocuments(), Gallery.countDocuments(), Order.countDocuments(), Order.countDocuments({ status: 'new' }), Order.findOne().sort({ createdAt: -1 }).lean(), DeliveryArea.countDocuments({ isActive: true }), ActivityLog.find({}).sort({ createdAt: -1 }).limit(8).lean()
+  const [products, categories, gallery, services, orders, newOrders, latestOrder, deliveryAreas, recentActivity] = await Promise.all([
+    Product.countDocuments(), Category.countDocuments(), Gallery.countDocuments(), Service.countDocuments(), Order.countDocuments(), Order.countDocuments({ status: 'new' }), Order.findOne().sort({ createdAt: -1 }).lean(), DeliveryArea.countDocuments({ isActive: true }), ActivityLog.find({}).sort({ createdAt: -1 }).limit(8).lean()
   ]);
-  res.json({ products, categories, gallery, orders, newOrders, latestOrder, deliveryAreas, recentActivity, cloud: { database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected', cloudinary: hasCloudinary ? 'configured' : 'not_configured', pos: process.env.POS_API_KEY ? 'ready' : 'needs_key', environment: process.env.VERCEL ? 'production' : 'development' } });
+  res.json({ products, categories, gallery, services, orders, newOrders, latestOrder, deliveryAreas, recentActivity, cloud: { database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected', cloudinary: hasCloudinary ? 'configured' : 'not_configured', pos: process.env.POS_API_KEY ? 'ready' : 'needs_key', environment: process.env.VERCEL ? 'production' : 'development' } });
 }));
 
 
@@ -722,15 +853,15 @@ app.patch('/api/pos/orders/:id/status', posAuth, api(async (req,res)=>{
 }));
 
 app.get('/api/backup', auth, api(async (req, res) => {
-  const [products,categories,gallery,settings,orders,reviews,analytics,deliveryAreas,activityLogs] = await Promise.all([Product.find().lean(),Category.find().lean(),Gallery.find().lean(),Settings.find().lean(),Order.find().lean(),Review.find().lean(),Analytics.find().lean(),DeliveryArea.find().lean(),ActivityLog.find().sort({createdAt:-1}).limit(1000).lean()]);
-  res.json({ version: 4, exportedAt: new Date().toISOString(), data: { products,categories,gallery,settings,orders,reviews,analytics,deliveryAreas,activityLogs } });
+  const [products,categories,gallery,services,settings,orders,reviews,analytics,deliveryAreas,activityLogs] = await Promise.all([Product.find().lean(),Category.find().lean(),Gallery.find().lean(),Service.find().lean(),Settings.find().lean(),Order.find().lean(),Review.find().lean(),Analytics.find().lean(),DeliveryArea.find().lean(),ActivityLog.find().sort({createdAt:-1}).limit(1000).lean()]);
+  res.json({ version: 5, exportedAt: new Date().toISOString(), data: { products,categories,gallery,services,settings,orders,reviews,analytics,deliveryAreas,activityLogs } });
 }));
 
 app.post('/api/restore', auth, api(async (req, res) => {
   const payload = req.body?.data;
   if (!payload || typeof payload !== 'object') return res.status(400).json({ error: 'ملف النسخة الاحتياطية غير صالح' });
   const collections = [
-    ['products', Product], ['categories', Category], ['gallery', Gallery],
+    ['products', Product], ['categories', Category], ['gallery', Gallery], ['services', Service],
     ['settings', Settings], ['orders', Order], ['reviews', Review], ['analytics', Analytics], ['deliveryAreas', DeliveryArea], ['activityLogs', ActivityLog]
   ];
   for (const [key, Model] of collections) {

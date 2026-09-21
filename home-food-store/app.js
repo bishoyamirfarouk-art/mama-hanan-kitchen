@@ -35,6 +35,14 @@
       { _id:'g5', image:'/assets/food/photos/feteer.webp', title:'عزومات', category:'عزومات' },
       { _id:'g6', image:'/assets/food/photos/dessert.webp', title:'حلويات', category:'حلويات' }
     ],
+    services: [
+      { _id:'s1', title:'عزومات وطلبات خاصة', description:'حدد عدد الأفراد، الأصناف والموعد، وننسق معاك الكميات المناسبة.', icon:'🎉', ctaLabel:'اطلب عرض', ctaType:'whatsapp', isActive:true },
+      { _id:'s2', title:'اشتراكات أسبوعية', description:'وجبات منظمة لأيام الأسبوع للأفراد أو العائلات حسب الاتفاق.', icon:'📅', ctaLabel:'اسأل عن الاشتراك', ctaType:'whatsapp', isActive:true },
+      { _id:'s3', title:'توصيل', description:'توصيل للمنزل برسوم حسب المنطقة ومكان الاستلام.', icon:'🛵', ctaLabel:'ابدأ طلبك', ctaType:'menu', isActive:true },
+      { _id:'s4', title:'مناسبات', description:'تجهيز سفرة أو بوفيه منزلي لكميات أكبر وترتيب مناسب للمناسبة.', icon:'🎂', ctaLabel:'كلمنا', ctaType:'whatsapp', isActive:true },
+      { _id:'s5', title:'وجبات شركات', description:'طلبات مجمعة ووجبات متكررة للفرق والمكاتب حسب الاتفاق.', icon:'🏢', ctaLabel:'اطلب التفاصيل', ctaType:'whatsapp', isActive:true },
+      { _id:'s6', title:'طلبات مخصوصة', description:'لو محتاج تعديل أو صنف بكمية معينة، ابعت التفاصيل ونراجع إمكانية التنفيذ.', icon:'👩‍🍳', ctaLabel:'ابعت طلبك', ctaType:'whatsapp', isActive:true }
+    ],
     reviews: [
       { _id:'r1', name:'عميلة المتجر', text:'الأكل وصل مرتب وساخن والطعم بيتي فعلًا.', rating:5 },
       { _id:'r2', name:'طلب عزومة', text:'الكميات كانت مناسبة والتجهيز منظم جدًا.', rating:5 },
@@ -42,7 +50,7 @@
     ]
   };
 
-  const state = { settings: demo.settings, categories: [], products: [], gallery: [], reviews: [], deliveryAreas: [], cart: loadCart(), lightboxIndex: 0, galleryVisible: [] };
+  const state = { settings: demo.settings, categories: [], products: [], gallery: [], services: [], reviews: [], deliveryAreas: [], cart: loadCart(), lightboxIndex: 0, galleryVisible: [] };
 
   function loadCart() {
     try { return JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch (_) { return []; }
@@ -179,7 +187,9 @@
     const p = state.products.find(x=>String(x._id)===String(id)); if (!p) return;
     track('product_view', p.title);
     const variants=Array.isArray(p.variants)?p.variants:[];
-    qs('#productModalBody').innerHTML = `<div class="product-modal-grid"><img src="${esc(p.mainImage)}" alt="${esc(p.title)}"><div><span class="eyebrow">${esc(p.category)}</span><h2>${esc(p.title)}</h2><p class="muted">${esc(p.description||p.shortDescription||'')}</p>${variants.length?`<div class="form-group"><label>اختر الحجم</label><select class="select" id="modalVariant">${variants.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} — ${money(v.price)}</option>`).join('')}</select></div>`:`<div class="price" style="margin:14px 0">${money(p.price)}</div>`}<div class="product-meta" style="margin:14px 0">${p.preparationTime?`<span>⏱️ ${esc(p.preparationTime)}</span>`:''}${p.serves?`<span>👥 ${esc(p.serves)}</span>`:''}</div><button class="btn btn-primary btn-block" id="modalAdd" ${!p.isAvailable?'disabled':''}>${p.isAvailable?'أضف للطلب':'غير متاح حاليًا'}</button></div></div>`;
+    const images=[p.mainImage,...(Array.isArray(p.additionalImages)?p.additionalImages.map(x=>x.url):[])].filter(Boolean);
+    qs('#productModalBody').innerHTML = `<div class="product-modal-grid"><div><img id="productModalMainImage" src="${esc(images[0]||'/assets/food/photos/chicken.webp')}" alt="${esc(p.title)}">${images.length>1?`<div class="product-modal-thumbs">${images.map((src,i)=>`<button type="button" class="product-modal-thumb ${i===0?'active':''}" data-product-thumb="${i}"><img src="${esc(src)}" alt=""></button>`).join('')}</div>`:''}</div><div><span class="eyebrow">${esc(p.category)}</span><h2>${esc(p.title)}</h2><p class="muted">${esc(p.description||p.shortDescription||'')}</p>${variants.length?`<div class="form-group"><label>اختر الحجم</label><select class="select" id="modalVariant">${variants.map(v=>`<option value="${esc(v.name)}">${esc(v.name)} — ${money(v.price)}</option>`).join('')}</select></div>`:`<div class="price" style="margin:14px 0">${money(p.price)}</div>`}<div class="product-meta" style="margin:14px 0">${p.preparationTime?`<span>⏱️ ${esc(p.preparationTime)}</span>`:''}${p.serves?`<span>👥 ${esc(p.serves)}</span>`:''}</div><button class="btn btn-primary btn-block" id="modalAdd" ${!p.isAvailable?'disabled':''}>${p.isAvailable?'أضف للطلب':'غير متاح حاليًا'}</button></div></div>`;
+    qsa('[data-product-thumb]',qs('#productModalBody')).forEach(btn=>btn.onclick=()=>{const i=Number(btn.dataset.productThumb);qs('#productModalMainImage').src=images[i];qsa('[data-product-thumb]',qs('#productModalBody')).forEach(x=>x.classList.toggle('active',x===btn));});
     qs('#modalAdd')?.addEventListener('click',()=>{addToCart(p,qs('#modalVariant')?.value||variants[0]?.name||'');closeModal('productModal');});
     openModal('productModal');
   }
@@ -304,6 +314,26 @@
     let ld=qs('#storeStructuredData'); if(!ld){ld=document.createElement('script');ld.id='storeStructuredData';ld.type='application/ld+json';document.head.appendChild(ld);} ld.textContent=JSON.stringify({'@context':'https://schema.org','@type':'FoodEstablishment',name:storeName,telephone:s.phoneNumber||undefined,address:s.address||undefined,openingHours:s.openingHours||undefined,url:location.origin,image:s.heroImage?new URL(s.heroImage,location.origin).href:undefined});
   }
 
+  function serviceHref(service){
+    const type=service.ctaType||'whatsapp';
+    if(type==='menu') return '/menu';
+    if(type==='phone') return state.settings.phoneNumber?`tel:${String(state.settings.phoneNumber).replace(/[^+\d]/g,'')}`:'#';
+    if(type==='group') return state.settings.whatsappGroupUrl||'#';
+    if(type==='custom') return service.ctaUrl||'#';
+    if(type==='none') return '';
+    const phone=String(state.settings.whatsappNumber||'').replace(/\D/g,'');
+    return phone?`https://wa.me/${phone}`:(state.settings.whatsappGroupUrl||'#');
+  }
+  function renderServices(){
+    const host=qs('#servicesGrid'); if(!host)return;
+    const list=(Array.isArray(state.services)?state.services:[]).filter(x=>x&&x.isActive!==false);
+    host.innerHTML=(list.length?list:demo.services).map(service=>{
+      const href=serviceHref(service); const external=/^https?:/i.test(href); const visual=service.image?`<img loading="lazy" src="${esc(service.image)}" alt="${esc(service.title)}">`:`<span>${esc(service.icon||'🍽️')}</span>`;
+      return `<article class="service-card reveal"><div class="visual service-visual">${visual}</div><div class="content"><h3>${esc(service.title)}</h3><p>${esc(service.description||'')}</p>${href?`<a class="btn btn-ghost" href="${esc(href)}" ${external?'target="_blank" rel="noopener"':''}>${esc(service.ctaLabel||'تواصل معنا')}</a>`:''}</div></article>`;
+    }).join('');
+    observeReveal();
+  }
+
   function renderHome() {
     const catHost=qs('#homeCategories');
     if(catHost) catHost.innerHTML=state.categories.slice(0,8).map(c=>`<a class="category-card reveal" href="/menu?category=${encodeURIComponent(c.name)}"><img loading="lazy" src="${esc(c.image||'/assets/food/meal.svg')}" alt="${esc(c.name)}"><div class="category-content"><h3>${esc(c.name)}</h3><span>شوف الأصناف ←</span></div></a>`).join('');
@@ -362,13 +392,13 @@
 
   async function init() {
     setupSharedUI(); setupNav(); setupPwa(); updateCartCount();
-    const [settings,categories,products,gallery,reviews,deliveryAreas]=await Promise.all([
-      safeApi('/settings',demo.settings),safeApi('/categories',demo.categories),safeApi('/products',demo.products),safeApi('/gallery',demo.gallery),safeApi('/reviews',demo.reviews),safeApi('/delivery-areas',[])
+    const [settings,categories,products,gallery,services,reviews,deliveryAreas]=await Promise.all([
+      safeApi('/settings',demo.settings),safeApi('/categories',demo.categories),safeApi('/products',demo.products),safeApi('/gallery',demo.gallery),safeApi('/services',demo.services),safeApi('/reviews',demo.reviews),safeApi('/delivery-areas',[])
     ]);
-    state.settings=settings&&settings.storeName?settings:demo.settings;state.categories=Array.isArray(categories)?categories:demo.categories;state.products=Array.isArray(products)?products:demo.products;state.gallery=Array.isArray(gallery)?gallery:demo.gallery;state.reviews=Array.isArray(reviews)?reviews:demo.reviews;state.deliveryAreas=Array.isArray(deliveryAreas)?deliveryAreas:[];
+    state.settings=settings&&settings.storeName?settings:demo.settings;state.categories=Array.isArray(categories)?categories:demo.categories;state.products=Array.isArray(products)?products:demo.products;state.gallery=Array.isArray(gallery)?gallery:demo.gallery;state.services=Array.isArray(services)?services:demo.services;state.reviews=Array.isArray(reviews)?reviews:demo.reviews;state.deliveryAreas=Array.isArray(deliveryAreas)?deliveryAreas:[];
     applySettings();
     const page=document.body.dataset.page;
-    if(page==='home')renderHome();if(page==='menu')renderMenu();if(page==='gallery')renderGalleryPage();
+    if(page==='home')renderHome();if(page==='menu')renderMenu();if(page==='gallery')renderGalleryPage();if(page==='services')renderServices();
     observeReveal();track('visit',page||'page');
   }
   document.addEventListener('DOMContentLoaded',init);
