@@ -309,15 +309,14 @@ async function initAdminFromEnv() {
     await AdminUser.create({ username, passwordHash: hashPassword(password), role: 'owner', permissions: ['all'] });
     return;
   }
-  // Environment Variables are the source of truth for the bootstrap admin.
-  // Changing ADMIN_PASSWORD in Vercel and redeploying updates this account safely.
-  if (!verifyPassword(password, existing.passwordHash)) {
-    existing.passwordHash = hashPassword(password);
-    existing.role = 'owner';
-    existing.permissions = ['all'];
-    existing.isActive = true;
-    await existing.save();
-  }
+  // ADMIN_USERNAME / ADMIN_PASSWORD are bootstrap credentials only.
+  // Once the account exists, password changes are managed from the authenticated API
+  // and are not overwritten on every server cold start.
+  let changed = false;
+  if (existing.role !== 'owner') { existing.role = 'owner'; changed = true; }
+  if (!Array.isArray(existing.permissions) || !existing.permissions.includes('all')) { existing.permissions = ['all']; changed = true; }
+  if (!existing.isActive) { existing.isActive = true; changed = true; }
+  if (changed) await existing.save();
 }
 
 async function ensureInitialContent() {
@@ -467,7 +466,79 @@ app.post('/api/auth/login', api(async (req, res) => {
   await logActivity('login', 'Admin login', username);
   res.json({ token: signToken(user), user: { username: user.username, role: user.role, permissions: user.permissions } });
 }));
-app.get('/api/auth/me', auth, (req, res) => res.json({ username: req.user.username, role: req.user.role, permissions: req.user.permissions }));
+app.get('/api/auth/me', auth, (req, res) => res.json({ id: req.user._id, username: req.user.username, role: req.user.role, permissions: req.user.permissions }));
+
+function ownerOnly(req, res, next) {
+  if (req.user?.role !== 'owner') return res.status(403).json({ error: 'هذه العملية متاحة لمالك النظام فقط' });
+  next();
+}
+
+app.put('/api/auth/password', auth, api(async (req, res) => {
+  const currentPassword = String(req.body.currentPassword || '');
+  const newPassword = String(req.body.newPassword || '');
+  if (newPassword.length < 8) return res.status(400).json({ error: 'كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف' });
+  const user = await AdminUser.findById(req.user._id);
+  if (!user || !verifyPassword(currentPassword, user.passwordHash)) return res.status(400).json({ error: 'كلمة المرور الحالية غير صحيحة' });
+  user.passwordHash = hashPassword(newPassword);
+  await user.save();
+  await logActivity('password_change', 'User changed own password', user.username);
+  res.json({ ok: true });
+}));
+
+app.get('/api/admin/users', auth, ownerOnly, api(async (req, res) => {
+  const users = await AdminUser.find({}).select('-passwordHash').sort({ createdAt: 1 }).lean();
+  res.json(users);
+}));
+
+app.post('/api/admin/users', auth, ownerOnly, api(async (req, res) => {
+  const username = cleanString(req.body.username, 80);
+  const password = String(req.body.password || '');
+  const role = ['owner', 'manager'].includes(req.body.role) ? req.body.role : 'manager';
+  if (username.length < 3) return res.status(400).json({ error: 'اسم المستخدم يجب ألا يقل عن 3 أحرف' });
+  if (password.length < 8) return res.status(400).json({ error: 'كلمة المرور يجب ألا تقل عن 8 أحرف' });
+  const exists = await AdminUser.exists({ username });
+  if (exists) return res.status(409).json({ error: 'اسم المستخدم مستخدم بالفعل' });
+  const user = await AdminUser.create({
+    username,
+    passwordHash: hashPassword(password),
+    role,
+    permissions: ['all'],
+    isActive: true
+  });
+  await logActivity('admin_user_create', `${username} (${role})`, req.user.username);
+  res.status(201).json({ _id: user._id, username: user.username, role: user.role, permissions: user.permissions, isActive: user.isActive, createdAt: user.createdAt });
+}));
+
+app.put('/api/admin/users/:id', auth, ownerOnly, api(async (req, res) => {
+  const target = await AdminUser.findById(req.params.id);
+  if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  const isSelf = String(target._id) === String(req.user._id);
+  if (Object.prototype.hasOwnProperty.call(req.body, 'isActive')) {
+    if (isSelf && req.body.isActive === false) return res.status(400).json({ error: 'لا يمكنك تعطيل الحساب الذي تستخدمه حاليًا' });
+    target.isActive = req.body.isActive !== false;
+  }
+  if (Object.prototype.hasOwnProperty.call(req.body, 'role')) {
+    const role = String(req.body.role || '');
+    if (!['owner', 'manager'].includes(role)) return res.status(400).json({ error: 'صلاحية غير صحيحة' });
+    if (isSelf && role !== 'owner') return res.status(400).json({ error: 'لا يمكنك خفض صلاحية حسابك الحالي' });
+    target.role = role;
+    target.permissions = ['all'];
+  }
+  await target.save();
+  await logActivity('admin_user_update', `${target.username} (${target.role}) active=${target.isActive}`, req.user.username);
+  res.json({ _id: target._id, username: target.username, role: target.role, permissions: target.permissions, isActive: target.isActive, createdAt: target.createdAt });
+}));
+
+app.put('/api/admin/users/:id/password', auth, ownerOnly, api(async (req, res) => {
+  const newPassword = String(req.body.newPassword || '');
+  if (newPassword.length < 8) return res.status(400).json({ error: 'كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف' });
+  const target = await AdminUser.findById(req.params.id);
+  if (!target) return res.status(404).json({ error: 'المستخدم غير موجود' });
+  target.passwordHash = hashPassword(newPassword);
+  await target.save();
+  await logActivity('admin_user_password_reset', target.username, req.user.username);
+  res.json({ ok: true });
+}));
 
 app.get('/api/settings', api(async (req, res) => res.json(await getSettings())));
 app.put('/api/settings', auth, api(async (req, res) => {
@@ -836,6 +907,161 @@ app.get('/api/reports/summary', auth, api(async (req, res) => {
     pageVisits: topMap(analytics.pageVisits),
     topOrdered,
     dailyVisits
+  });
+}));
+
+
+app.get('/api/reports/full', auth, api(async (req, res) => {
+  const now = new Date();
+  const parseDate = (value, endOfDay = false) => {
+    if (!value) return null;
+    const d = new Date(String(value));
+    if (Number.isNaN(d.getTime())) return null;
+    if (endOfDay) d.setHours(23, 59, 59, 999); else d.setHours(0, 0, 0, 0);
+    return d;
+  };
+  const defaultFrom = new Date(now.getTime() - 29 * 86400000); defaultFrom.setHours(0,0,0,0);
+  const from = parseDate(req.query.from) || defaultFrom;
+  const to = parseDate(req.query.to, true) || now;
+  if (from > to) return res.status(400).json({ error: 'الفترة الزمنية غير صحيحة' });
+
+  const orderFilter = { createdAt: { $gte: from, $lte: to } };
+  const activityFilter = { createdAt: { $gte: from, $lte: to } };
+  const reviewFilter = { createdAt: { $gte: from, $lte: to } };
+
+  const [settings, orders, products, categories, services, deliveryAreas, gallery, reviews, analytics, activity] = await Promise.all([
+    getSettings(),
+    Order.find(orderFilter).sort({ createdAt: -1 }).limit(5000).lean(),
+    Product.find({}).sort({ sortOrder: 1, title: 1 }).lean(),
+    Category.find({}).sort({ sortOrder: 1, name: 1 }).lean(),
+    Service.find({}).sort({ sortOrder: 1, createdAt: 1 }).lean(),
+    DeliveryArea.find({}).sort({ sortOrder: 1, name: 1 }).lean(),
+    Gallery.find({}).sort({ sortOrder: 1, createdAt: -1 }).lean(),
+    Review.find(reviewFilter).sort({ createdAt: -1 }).limit(3000).lean(),
+    Analytics.findOne({ key: 'main' }).lean() || {},
+    ActivityLog.find(activityFilter).sort({ createdAt: -1 }).limit(3000).lean(),
+  ]);
+
+  const validOrders = orders.filter(o => o.status !== 'cancelled');
+  const deliveredOrders = orders.filter(o => o.status === 'delivered');
+  const revenue = validOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+  const deliveredRevenue = deliveredOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+  const subtotal = validOrders.reduce((sum, o) => sum + Number(o.subtotal || 0), 0);
+  const deliveryFees = validOrders.reduce((sum, o) => sum + Number(o.deliveryFee || 0), 0);
+  const totalItems = validOrders.reduce((sum, o) => sum + (o.items || []).reduce((s, i) => s + Number(i.quantity || 0), 0), 0);
+
+  const statuses = {};
+  const fulfillment = { delivery: 0, pickup: 0 };
+  const itemMap = new Map();
+  const customerMap = new Map();
+  const areaMap = new Map();
+  const dailyMap = new Map();
+
+  for (const o of orders) {
+    statuses[o.status] = (statuses[o.status] || 0) + 1;
+    fulfillment[o.fulfillment === 'pickup' ? 'pickup' : 'delivery'] += 1;
+    const day = new Date(o.createdAt).toISOString().slice(0, 10);
+    const d = dailyMap.get(day) || { date: day, orders: 0, validOrders: 0, revenue: 0 };
+    d.orders += 1;
+    if (o.status !== 'cancelled') { d.validOrders += 1; d.revenue += Number(o.total || 0); }
+    dailyMap.set(day, d);
+
+    const phone = String(o.customerPhone || '').trim();
+    const customerKey = phone || String(o.customerName || '').trim() || 'unknown';
+    const c = customerMap.get(customerKey) || { name: o.customerName || '', phone, orders: 0, spent: 0, lastOrderAt: o.createdAt };
+    c.orders += 1;
+    if (o.status !== 'cancelled') c.spent += Number(o.total || 0);
+    if (new Date(o.createdAt) > new Date(c.lastOrderAt)) c.lastOrderAt = o.createdAt;
+    customerMap.set(customerKey, c);
+
+    const areaName = String(o.area || '').trim() || (o.fulfillment === 'pickup' ? 'استلام من المكان' : 'غير محدد');
+    const a = areaMap.get(areaName) || { area: areaName, orders: 0, revenue: 0, deliveryFees: 0 };
+    a.orders += 1;
+    if (o.status !== 'cancelled') { a.revenue += Number(o.total || 0); a.deliveryFees += Number(o.deliveryFee || 0); }
+    areaMap.set(areaName, a);
+
+    if (o.status !== 'cancelled') {
+      for (const i of (o.items || [])) {
+        const key = `${i.title || 'بدون اسم'}|${i.selectedVariant || ''}`;
+        const item = itemMap.get(key) || { title: i.title || 'بدون اسم', variant: i.selectedVariant || '', quantity: 0, revenue: 0 };
+        item.quantity += Number(i.quantity || 0);
+        item.revenue += Number(i.lineTotal || 0);
+        itemMap.set(key, item);
+      }
+    }
+  }
+
+  const topItems = [...itemMap.values()].sort((a,b) => b.quantity - a.quantity || b.revenue - a.revenue);
+  const customers = [...customerMap.values()].sort((a,b) => b.spent - a.spent || b.orders - a.orders);
+  const areas = [...areaMap.values()].sort((a,b) => b.orders - a.orders || b.revenue - a.revenue);
+  const dailySales = [...dailyMap.values()].sort((a,b) => a.date.localeCompare(b.date));
+
+  const reviewStatuses = {};
+  const reviewRatings = {};
+  for (const r of reviews) {
+    reviewStatuses[r.status || 'approved'] = (reviewStatuses[r.status || 'approved'] || 0) + 1;
+    const rating = String(Number(r.rating || 0));
+    reviewRatings[rating] = (reviewRatings[rating] || 0) + 1;
+  }
+
+  const allDailyVisits = Object.entries(analytics.dailyVisits || {})
+    .filter(([date]) => {
+      const d = new Date(`${date}T00:00:00`);
+      return d >= from && d <= to;
+    })
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([date,count]) => ({ date, count: Number(count || 0) }));
+
+  let users = [];
+  if (req.user.role === 'owner') {
+    users = await AdminUser.find({}).select('-passwordHash').sort({ createdAt: -1 }).lean();
+  }
+
+  res.json({
+    generatedAt: now.toISOString(),
+    period: { from: from.toISOString(), to: to.toISOString() },
+    store: { name: settings.storeName, currency: settings.currency || 'ج.م' },
+    summary: {
+      orders: orders.length,
+      validOrders: validOrders.length,
+      cancelledOrders: orders.length - validOrders.length,
+      deliveredOrders: deliveredOrders.length,
+      revenue,
+      deliveredRevenue,
+      subtotal,
+      deliveryFees,
+      averageOrder: validOrders.length ? revenue / validOrders.length : 0,
+      totalItems,
+      uniqueCustomers: customers.length,
+    },
+    statuses,
+    fulfillment,
+    dailySales,
+    itemSales: topItems,
+    customers,
+    areas,
+    orders,
+    catalog: {
+      products: products.map(p => ({ _id:p._id, title:p.title, category:p.category, price:p.price, oldPrice:p.oldPrice, isAvailable:p.isAvailable, availableToday:p.availableToday, featured:p.featured, isHidden:p.isHidden, createdAt:p.createdAt, updatedAt:p.updatedAt })),
+      categories: categories.map(c => ({ _id:c._id, name:c.name, isActive:c.isActive, sortOrder:c.sortOrder, createdAt:c.createdAt })),
+      services: services.map(s => ({ _id:s._id, title:s.title, isActive:s.isActive, ctaType:s.ctaType, sortOrder:s.sortOrder, createdAt:s.createdAt, updatedAt:s.updatedAt })),
+      deliveryAreas: deliveryAreas.map(a => ({ _id:a._id, name:a.name, fee:a.fee, minimumOrder:a.minimumOrder, isActive:a.isActive, createdAt:a.createdAt, updatedAt:a.updatedAt })),
+      gallery: gallery.map(g => ({ _id:g._id, title:g.title, category:g.category, isActive:g.isActive, sortOrder:g.sortOrder, createdAt:g.createdAt })),
+    },
+    reviews: { rows: reviews, statuses: reviewStatuses, ratings: reviewRatings },
+    users,
+    activity,
+    analytics: {
+      totalVisits: Number(analytics.totalVisits || 0),
+      periodVisits: allDailyVisits.reduce((sum, d) => sum + d.count, 0),
+      orderStarts: Number(analytics.orderStarts || 0),
+      whatsappOpens: Number(analytics.whatsappOpens || 0),
+      productViews: analytics.productViews || {},
+      cartAdds: analytics.cartAdds || {},
+      pageVisits: analytics.pageVisits || {},
+      dailyVisits: allDailyVisits,
+    },
+    limits: { orders: 5000, reviews: 3000, activity: 3000, ordersTruncated: orders.length >= 5000 },
   });
 }));
 
