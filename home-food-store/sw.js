@@ -1,7 +1,7 @@
-const CACHE = 'mama-hanan-kitchen-v11';
+const CACHE = 'mama-hanan-kitchen-v17';
 const SHELL = [
   '/', '/index.html', '/menu', '/gallery', '/services', '/404',
-  '/style.css?v=11', '/config.js?v=11', '/app.js?v=11',
+  '/style.css?v=17', '/config.js?v=17', '/app.js?v=17',
   '/assets/brand/logo-horizontal.webp',
   '/assets/brand/favicon.png',
   '/assets/icons/whatsapp.svg'

@@ -50,7 +50,7 @@
     ]
   };
 
-  const state = { settings: demo.settings, categories: [], products: [], gallery: [], services: [], reviews: [], deliveryAreas: [], cart: loadCart(), lightboxIndex: 0, galleryVisible: [] };
+  const state = { settings: demo.settings, categories: [], products: [], gallery: [], services: [], reviews: [], deliveryAreas: [], deliveryAreasLoaded: false, cart: loadCart(), lightboxIndex: 0, galleryVisible: [] };
 
   function loadCart() {
     try { return JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch (_) { return []; }
@@ -63,9 +63,17 @@
   function imageUrl(url, width=900) {
     const value=String(url||'').trim();
     if(!value) return value;
+    const requested=Math.max(80,Math.min(1800,Number(width)||900));
+    // Use lightweight local derivatives for the bundled demo/placeholder food photos.
+    const local=value.match(/^\/assets\/food\/photos\/([^/?]+)\.webp(?:\?.*)?$/i);
+    if(local){
+      const suffix=requested<=380?'-360':requested<=720?'-640':'';
+      return `/assets/food/photos/${local[1]}${suffix}.webp?v=17`;
+    }
+    if(value.startsWith('/assets/')) return `${value}${value.includes('?')?'&':'?'}v=17`;
     if(!/https:\/\/res\.cloudinary\.com\//i.test(value) || !value.includes('/image/upload/')) return value;
     if(value.includes('/image/upload/f_auto,q_auto')) return value;
-    return value.replace('/image/upload/', `/image/upload/f_auto,q_auto:eco,c_limit,w_${Math.max(80,Math.min(1800,Number(width)||900))}/`);
+    return value.replace('/image/upload/', `/image/upload/f_auto,q_auto:eco,c_limit,w_${requested}/`);
   }
 
   async function fetchJson(url, options={}) {
@@ -209,11 +217,19 @@
     select.innerHTML=options.join('')||'<option value="pickup">الطلب متوقف مؤقتًا</option>';
     select.disabled=!options.length;
   }
-  function openCheckout() {
+  async function ensureDeliveryAreas(){
+    if(state.deliveryAreasLoaded) return;
+    const areas=await safeApi('/delivery-areas',[]);
+    state.deliveryAreas=Array.isArray(areas)?areas:[];
+    state.deliveryAreasLoaded=true;
+  }
+  async function openCheckout() {
     if (!state.cart.length) return toast('أضف وجبة واحدة على الأقل','error');
     renderFulfillmentOptions();
     if(qs('#fulfillmentSelect')?.disabled)return toast('الطلبات متوقفة مؤقتًا','error');
-    closeCart(); renderDeliveryAreaControl(); renderCheckoutSummary(); toggleAddress(); openModal('checkoutModal'); track('order_start');
+    closeCart();
+    await ensureDeliveryAreas();
+    renderDeliveryAreaControl(); renderCheckoutSummary(); toggleAddress(); openModal('checkoutModal'); track('order_start');
   }
   function renderDeliveryAreaControl() {
     const host=qs('#deliveryAreaControl'); if(!host) return;
@@ -279,7 +295,19 @@
     const s=state.settings || {};
     const storeName=s.storeName||CFG.fallbackStoreName||'مطبخ ماما حنان';
     qsa('[data-store-name]').forEach(el=>el.textContent=storeName);
-    qsa('[data-store-logo]').forEach(el=>{el.src=imageUrl(s.storeLogo||'/assets/brand/logo-horizontal.webp',640);el.decoding='async';});
+    qsa('[data-store-logo]').forEach(el=>{
+      const logo=s.storeLogo||'/assets/brand/logo-horizontal.webp';
+      if(logo==='/assets/brand/logo-horizontal.webp'||logo==='/assets/brand/logo-horizontal-320.webp'||logo==='/assets/brand/logo-horizontal-480.webp'){
+        el.src='/assets/brand/logo-horizontal-320.webp';
+        el.srcset='/assets/brand/logo-horizontal-320.webp 320w, /assets/brand/logo-horizontal-480.webp 480w';
+        el.sizes='(max-width:600px) 145px, 240px';
+      }else{
+        el.src=imageUrl(logo,480);
+        el.srcset=`${imageUrl(logo,320)} 320w, ${imageUrl(logo,480)} 480w`;
+        el.sizes='(max-width:600px) 145px, 240px';
+      }
+      el.decoding='async';
+    });
     qsa('[data-tagline]').forEach(el=>el.textContent=s.tagline||'أكل بيتي بطعم زمان');
 
     const toggleText=(selector,value)=>qsa(selector).forEach(el=>{const has=Boolean(String(value||'').trim());el.hidden=!has;if(has)el.textContent=value;});
@@ -295,14 +323,15 @@
     qsa('[data-hero-image]').forEach(img=>{
       const hero=s.heroImage||'/assets/brand/hero-home.webp';
       if(hero==='/assets/brand/hero-home.webp'||hero==='/assets/brand/hero-home-1600.webp'){
-        img.src='/assets/brand/hero-home-1600.webp';
-        img.srcset='/assets/brand/hero-home-960.webp 960w, /assets/brand/hero-home-1600.webp 1600w';
-        img.sizes='(max-width:700px) 100vw, min(1480px, 100vw)';
+        img.src='/assets/brand/hero-home-1280.webp';
+        img.srcset='/assets/brand/hero-home-640.webp 640w, /assets/brand/hero-home-768.webp 768w, /assets/brand/hero-home-960.webp 960w, /assets/brand/hero-home-1280.webp 1280w, /assets/brand/hero-home-1600.webp 1600w';
+        img.sizes='(max-width:600px) calc(100vw - 16px), (max-width:1508px) calc(100vw - 28px), 1480px';
       }else{
-        img.src=imageUrl(hero,1600);
-        img.removeAttribute('srcset'); img.removeAttribute('sizes');
+        img.src=imageUrl(hero,1280);
+        img.srcset=`${imageUrl(hero,640)} 640w, ${imageUrl(hero,768)} 768w, ${imageUrl(hero,960)} 960w, ${imageUrl(hero,1280)} 1280w, ${imageUrl(hero,1600)} 1600w`;
+        img.sizes='(max-width:600px) calc(100vw - 16px), (max-width:1508px) calc(100vw - 28px), 1480px';
       }
-      img.decoding='async';
+      img.loading='eager'; img.fetchPriority='high'; img.decoding='async';
     });
     if(qs('[data-hero-bg]') && s.heroImage) qs('[data-hero-bg]').style.backgroundImage=`linear-gradient(90deg,rgba(23,19,17,.98) 12%,rgba(23,19,17,.83) 48%,rgba(23,19,17,.36) 100%),url("${imageUrl(String(s.heroImage).replace(/"/g,''),1600)}")`;
 
@@ -422,16 +451,46 @@
   function track(type,key=''){fetch(`${API}/analytics/track`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({type,key})}).catch(()=>{});}
   function setupPwa(){if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));}
 
+  function idleWork(fn, timeout=1200){
+    if('requestIdleCallback' in window) return requestIdleCallback(fn,{timeout});
+    return setTimeout(fn,Math.min(timeout,500));
+  }
+
   async function init() {
     setupSharedUI(); setupNav(); setupPwa(); setupCustomerReviewForm(); updateCartCount();
-    const [settings,categories,products,gallery,services,reviews,deliveryAreas]=await Promise.all([
-      safeApi('/settings',demo.settings),safeApi('/categories',demo.categories),safeApi('/products',demo.products),safeApi('/gallery',demo.gallery),safeApi('/services',demo.services),safeApi('/reviews',demo.reviews),safeApi('/delivery-areas',[])
-    ]);
-    state.settings=settings&&settings.storeName?settings:demo.settings;state.categories=Array.isArray(categories)?categories:demo.categories;state.products=Array.isArray(products)?products:demo.products;state.gallery=Array.isArray(gallery)?gallery:demo.gallery;state.services=Array.isArray(services)?services:demo.services;state.reviews=Array.isArray(reviews)?reviews:demo.reviews;state.deliveryAreas=Array.isArray(deliveryAreas)?deliveryAreas:[];
+    // Paint the static brand immediately. Cloud settings then hydrate it without blocking LCP.
     applySettings();
-    const page=document.body.dataset.page;
-    if(page==='home')renderHome();if(page==='menu')renderMenu();if(page==='gallery')renderGalleryPage();if(page==='services')renderServices();
-    observeReveal();track('visit',page||'page');
+    const page=document.body.dataset.page || 'page';
+    const settingsPromise=safeApi('/settings',demo.settings).then(settings=>{
+      state.settings=settings&&settings.storeName?settings:demo.settings;
+      applySettings();
+      // Repaint data cards only when already loaded so custom currency/contact settings are reflected.
+      if(page==='menu'&&state.products.length) renderMenu();
+      if(page==='services'&&state.services.length) renderServices();
+      if(page==='home'&&(state.products.length||state.gallery.length||state.reviews.length)) renderHome();
+      return state.settings;
+    });
+
+    if(page==='menu'){
+      const [categories,products]=await Promise.all([safeApi('/categories',demo.categories),safeApi('/products',demo.products)]);
+      state.categories=Array.isArray(categories)?categories:demo.categories; state.products=Array.isArray(products)?products:demo.products; renderMenu();
+    }else if(page==='gallery'){
+      const gallery=await safeApi('/gallery',demo.gallery); state.gallery=Array.isArray(gallery)?gallery:demo.gallery; renderGalleryPage();
+    }else if(page==='services'){
+      const services=await safeApi('/services',demo.services); state.services=Array.isArray(services)?services:demo.services; renderServices();
+    }else if(page==='home'){
+      // Above-the-fold is static; delay data-heavy below-fold sections until the browser is idle.
+      idleWork(async()=>{
+        const [categories,products]=await Promise.all([safeApi('/categories',demo.categories),safeApi('/products',demo.products)]);
+        state.categories=Array.isArray(categories)?categories:demo.categories; state.products=Array.isArray(products)?products:demo.products; renderHome();
+        idleWork(async()=>{
+          const [gallery,reviews]=await Promise.all([safeApi('/gallery',demo.gallery),safeApi('/reviews',demo.reviews)]);
+          state.gallery=Array.isArray(gallery)?gallery:demo.gallery; state.reviews=Array.isArray(reviews)?reviews:demo.reviews; renderHome();
+        },1800);
+      },700);
+    }
+    settingsPromise.catch(()=>{});
+    observeReveal(); track('visit',page);
   }
   document.addEventListener('DOMContentLoaded',init);
 })();
