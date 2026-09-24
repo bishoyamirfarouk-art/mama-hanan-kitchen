@@ -1,0 +1,120 @@
+{
+  "info": {
+    "name": "Mama Hanan Flutter Invoice API v1.8.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key":"baseUrl","value":"https://mama-hanan-kitchen.vercel.app"},
+    {"key":"token","value":""},
+    {"key":"invoiceId","value":""},
+    {"key":"productId","value":""},
+    {"key":"posKey","value":""}
+  ],
+  "item": [
+    {
+      "name": "Admin Login",
+      "request": {
+        "method": "POST",
+        "header": [{"key":"Content-Type","value":"application/json"}],
+        "body": {"mode":"raw","raw":"{\n  \"username\": \"admin\",\n  \"password\": \"YOUR_PASSWORD\"\n}"},
+        "url": "{{baseUrl}}/api/auth/login"
+      }
+    },
+    {
+      "name": "List Invoices",
+      "request": {
+        "method": "GET",
+        "header": [{"key":"Authorization","value":"Bearer {{token}}"}],
+        "url": "{{baseUrl}}/api/admin/invoices?page=1&limit=100"
+      }
+    },
+    {
+      "name": "Delivered Invoices",
+      "request": {
+        "method": "GET",
+        "header": [{"key":"Authorization","value":"Bearer {{token}}"}],
+        "url": "{{baseUrl}}/api/orders?status=delivered"
+      }
+    },
+    {
+      "name": "Search Invoice",
+      "request": {
+        "method": "GET",
+        "header": [{"key":"Authorization","value":"Bearer {{token}}"}],
+        "url": "{{baseUrl}}/api/admin/invoices?search=MH-&page=1&limit=100"
+      }
+    },
+    {
+      "name": "Invoices By Date",
+      "request": {
+        "method": "GET",
+        "header": [{"key":"Authorization","value":"Bearer {{token}}"}],
+        "url": "{{baseUrl}}/api/admin/invoices?date=2026-09-24&page=1&limit=100"
+      }
+    },
+    {
+      "name": "Get Invoice",
+      "request": {
+        "method": "GET",
+        "header": [{"key":"Authorization","value":"Bearer {{token}}"}],
+        "url": "{{baseUrl}}/api/admin/invoices/{{invoiceId}}"
+      }
+    },
+    {
+      "name": "Edit Invoice - Percent Discount",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {"key":"Authorization","value":"Bearer {{token}}"},
+          {"key":"Content-Type","value":"application/json"}
+        ],
+        "body": {"mode":"raw","raw":"{\n  \"customerName\": \"Ahmed\",\n  \"customerPhone\": \"01000000000\",\n  \"customerAddress\": \"Cairo\",\n  \"area\": \"Nasr City\",\n  \"fulfillment\": \"delivery\",\n  \"items\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"title\": \"ignored for new catalog items\",\n      \"selectedVariant\": \"\",\n      \"unitPrice\": 1,\n      \"quantity\": 2,\n      \"notes\": \"بدون شطة\"\n    }\n  ],\n  \"notes\": \"اتصل قبل الوصول\",\n  \"deliveryFee\": 30,\n  \"discountType\": \"percent\",\n  \"discountValue\": 10,\n  \"status\": \"delivered\"\n}"},
+        "url": "{{baseUrl}}/api/admin/orders/{{invoiceId}}"
+      }
+    },
+    {
+      "name": "Edit Invoice - Fixed Discount",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {"key":"Authorization","value":"Bearer {{token}}"},
+          {"key":"Content-Type","value":"application/json"}
+        ],
+        "body": {"mode":"raw","raw":"{\n  \"discountType\": \"value\",\n  \"discountValue\": 50\n}"},
+        "url": "{{baseUrl}}/api/admin/orders/{{invoiceId}}"
+      }
+    },
+    {
+      "name": "Delete Invoice",
+      "request": {
+        "method": "DELETE",
+        "header": [{"key":"Authorization","value":"Bearer {{token}}"}],
+        "url": "{{baseUrl}}/api/admin/orders/{{invoiceId}}"
+      }
+    },
+    {
+      "name": "POS Sync",
+      "request": {
+        "method": "GET",
+        "header": [{"key":"x-pos-key","value":"{{posKey}}"}],
+        "url": "{{baseUrl}}/api/pos/sync?since=2026-09-24T00:00:00.000Z"
+      }
+    },
+    {
+      "name": "Sales Summary",
+      "request": {
+        "method": "GET",
+        "header": [{"key":"Authorization","value":"Bearer {{token}}"}],
+        "url": "{{baseUrl}}/api/reports/summary?days=30"
+      }
+    },
+    {
+      "name": "Backup",
+      "request": {
+        "method": "GET",
+        "header": [{"key":"Authorization","value":"Bearer {{token}}"}],
+        "url": "{{baseUrl}}/api/backup"
+      }
+    }
+  ]
+}

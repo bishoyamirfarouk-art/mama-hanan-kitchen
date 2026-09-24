@@ -93,6 +93,7 @@ async function makeUniqueSlug(Model, rawValue, fallbackPrefix, excludeId = null)
 
 function apiError(err) {
   if (!err) return { status: 500, message: 'حدث خطأ غير متوقع في السيرفر' };
+  if (Number.isInteger(err.statusCode) && err.statusCode >= 400 && err.statusCode < 600) return { status: err.statusCode, message: err.message || 'تعذر تنفيذ العملية' };
   if (/not configured/i.test(err.message || '')) return { status: 503, message: err.message };
   if (err.code === 11000) {
     const field = Object.keys(err.keyPattern || err.keyValue || {})[0] || '';
@@ -219,13 +220,348 @@ const orderSchema = new mongoose.Schema({
   fulfillment: { type: String, enum: ['delivery', 'pickup'], default: 'delivery' },
   items: { type: [orderItemSchema], required: true },
   subtotal: { type: Number, required: true },
-  deliveryFee: { type: Number, default: 0 },
-  total: { type: Number, required: true },
+  deliveryFee: { type: Number, default: 0, min: 0 },
+
+  // Legacy field retained for backward compatibility with older Admin/Flutter builds.
+  // New code mirrors discountAmount here but does not trust this value from clients.
+  discount: { type: Number, default: 0, min: 0 },
+
+  discountType: {
+    type: String,
+    enum: ['none', 'value', 'percent'],
+    default: 'none'
+  },
+  discountValue: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  discountAmount: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+
+  total: { type: Number, required: true, min: 0 },
   status: { type: String, enum: ['new', 'contacted', 'preparing', 'out_for_delivery', 'delivered', 'cancelled'], default: 'new', index: true },
   createdAt: { type: Date, default: Date.now, index: true },
   updatedAt: { type: Date, default: Date.now }
 });
 const Order = mongoose.models.Order || mongoose.model('Order', orderSchema);
+
+
+const ORDER_STATUSES = ['new','contacted','preparing','out_for_delivery','delivered','cancelled'];
+const DISCOUNT_TYPES = ['none','value','percent'];
+
+function httpError(statusCode, message) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj || {}, key);
+}
+
+function money(value) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function currentDiscountState(order, subtotalOverride = null) {
+  const source = order || {};
+  const subtotal = money(subtotalOverride == null ? source.subtotal : subtotalOverride);
+  const hasModernFields = hasOwn(source, 'discountType') || hasOwn(source, 'discountValue') || hasOwn(source, 'discountAmount');
+  const legacy = Math.min(Math.max(0, money(source.discount || 0)), subtotal);
+  const rawModernType = DISCOUNT_TYPES.includes(source.discountType) ? source.discountType : 'none';
+  const rawModernValue = Math.max(0, money(source.discountValue || 0));
+  const rawModernAmount = Math.max(0, money(source.discountAmount || 0));
+
+  // Compatibility for the intermediate schema that had only `discount`.
+  // This also handles Mongoose applying new defaults while hydrating an old document.
+  const modernLooksEmpty = rawModernType === 'none' && rawModernValue === 0 && rawModernAmount === 0;
+  if (!hasModernFields || (legacy > 0 && modernLooksEmpty)) {
+    return legacy > 0
+      ? { discountType: 'value', discountValue: legacy, discountAmount: legacy }
+      : { discountType: 'none', discountValue: 0, discountAmount: 0 };
+  }
+
+  const discountType = rawModernType;
+  let discountValue = rawModernValue;
+  let discountAmount = rawModernAmount;
+
+  if (discountType === 'none') {
+    discountValue = 0;
+    discountAmount = 0;
+  } else if (discountType === 'percent') {
+    discountValue = Math.min(discountValue, 100);
+    discountAmount = Math.min(subtotal, money(subtotal * discountValue / 100));
+  } else {
+    discountAmount = Math.min(subtotal, discountAmount || discountValue);
+    discountValue = discountAmount;
+  }
+
+  return { discountType, discountValue, discountAmount };
+}
+
+function calculateDiscountStrict(discountType, discountValue, subtotal) {
+  const type = DISCOUNT_TYPES.includes(discountType) ? discountType : 'none';
+  const value = Math.max(0, money(discountValue || 0));
+  const safeSubtotal = Math.max(0, money(subtotal));
+
+  if (type === 'none') return { discountType: 'none', discountValue: 0, discountAmount: 0 };
+  if (type === 'percent') {
+    if (value > 100) throw httpError(400, 'نسبة الخصم لا يمكن أن تتجاوز 100%');
+    return { discountType: 'percent', discountValue: value, discountAmount: money(safeSubtotal * value / 100) };
+  }
+  if (value > safeSubtotal) throw httpError(400, 'قيمة الخصم لا يمكن أن تتجاوز إجمالي الأصناف');
+  return { discountType: 'value', discountValue: value, discountAmount: value };
+}
+
+function serializeOrder(order) {
+  const raw = order && typeof order.toObject === 'function' ? order.toObject() : { ...(order || {}) };
+  const discountState = currentDiscountState(raw, raw.subtotal);
+  return {
+    ...raw,
+    discountType: discountState.discountType,
+    discountValue: discountState.discountValue,
+    discountAmount: discountState.discountAmount,
+    // Keep the legacy amount for old Admin/Flutter clients.
+    discount: discountState.discountAmount
+  };
+}
+
+function parseInvoiceDate(value, endOfDay = false) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const suffix = endOfDay ? 'T23:59:59.999Z' : 'T00:00:00.000Z';
+    const d = new Date(raw + suffix);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  if (endOfDay && raw.length <= 10) d.setUTCHours(23, 59, 59, 999);
+  return d;
+}
+
+function buildInvoiceFilter(query = {}) {
+  const filter = {};
+  if (query.status) {
+    const status = cleanString(query.status, 40);
+    if (!ORDER_STATUSES.includes(status)) throw httpError(400, 'حالة الفاتورة غير صحيحة');
+    filter.status = status;
+  }
+
+  const date = cleanString(query.date, 20);
+  const from = parseInvoiceDate(query.from || date, false);
+  const to = parseInvoiceDate(query.to || date, true);
+  if ((query.from || date) && !from) throw httpError(400, 'تاريخ البداية غير صحيح');
+  if ((query.to || date) && !to) throw httpError(400, 'تاريخ النهاية غير صحيح');
+  if (from && to && from > to) throw httpError(400, 'الفترة الزمنية غير صحيحة');
+  if (from || to) {
+    filter.createdAt = {};
+    if (from) filter.createdAt.$gte = from;
+    if (to) filter.createdAt.$lte = to;
+  }
+
+  const search = cleanString(query.search || query.q, 160);
+  if (search) {
+    const rx = new RegExp(escapeRegex(search), 'i');
+    filter.$or = [{ orderNumber: rx }, { customerName: rx }, { customerPhone: rx }];
+  }
+
+  const customer = cleanString(query.customer, 160);
+  if (customer) {
+    const rx = new RegExp(escapeRegex(customer), 'i');
+    filter.$and = [...(filter.$and || []), { $or: [{ customerName: rx }, { customerPhone: rx }] }];
+  }
+
+  const orderNumber = cleanString(query.orderNumber, 160);
+  if (orderNumber) filter.orderNumber = new RegExp(escapeRegex(orderNumber), 'i');
+  return filter;
+}
+
+function findExistingInvoiceItem(currentItems, usedIndexes, raw) {
+  const incomingProductId = mongoose.Types.ObjectId.isValid(raw?.productId) ? String(raw.productId) : '';
+  const incomingVariant = cleanString(raw?.selectedVariant, 80);
+  const incomingTitle = cleanString(raw?.title, 180).toLowerCase();
+
+  for (let index = 0; index < currentItems.length; index += 1) {
+    if (usedIndexes.has(index)) continue;
+    const existing = currentItems[index] || {};
+    const existingProductId = mongoose.Types.ObjectId.isValid(existing.productId) ? String(existing.productId) : '';
+    const existingVariant = cleanString(existing.selectedVariant, 80);
+    const existingTitle = cleanString(existing.title, 180).toLowerCase();
+
+    const productMatch = incomingProductId && existingProductId && incomingProductId === existingProductId && incomingVariant === existingVariant;
+    const legacyMatch = incomingTitle && incomingTitle === existingTitle && incomingVariant === existingVariant && (!incomingProductId || !existingProductId);
+    if (productMatch || legacyMatch) {
+      usedIndexes.add(index);
+      return existing;
+    }
+  }
+  return null;
+}
+
+async function buildAdminInvoiceItems(currentOrder, rawItems) {
+  const incoming = Array.isArray(rawItems) ? rawItems : [];
+  const currentItems = Array.isArray(currentOrder?.items) ? currentOrder.items.map(i => ({ ...(i?.toObject ? i.toObject() : i) })) : [];
+  const productIds = [...new Set(incoming.map(i => i?.productId).filter(id => mongoose.Types.ObjectId.isValid(id)).map(String))];
+  const products = productIds.length ? await Product.find({ _id: { $in: productIds } }).lean() : [];
+  const productMap = new Map(products.map(p => [String(p._id), p]));
+  const usedIndexes = new Set();
+  const result = [];
+
+  for (const raw of incoming) {
+    const quantityRaw = Number(raw?.quantity ?? 1);
+    if (!Number.isFinite(quantityRaw) || quantityRaw < 1) throw httpError(400, 'كمية الصنف غير صحيحة');
+    const quantity = Math.min(999, Math.trunc(quantityRaw));
+    const selectedVariant = cleanString(raw?.selectedVariant, 80);
+    const notes = cleanString(raw?.notes, 300);
+    const matched = findExistingInvoiceItem(currentItems, usedIndexes, { ...raw, selectedVariant });
+
+    const validProductId = mongoose.Types.ObjectId.isValid(raw?.productId) ? String(raw.productId) : '';
+    const product = validProductId ? productMap.get(validProductId) : null;
+
+    let title = '';
+    let unitPrice = 0;
+    let productId = undefined;
+
+    if (matched) {
+      // Existing invoice line: preserve the historical selling price even if the catalog changed,
+      // was hidden, became unavailable, or was later deleted from the catalog.
+      title = cleanString(matched.title || raw?.title || product?.title, 180);
+      unitPrice = Math.max(0, money(matched.unitPrice));
+      if (mongoose.Types.ObjectId.isValid(matched.productId)) productId = matched.productId;
+      else if (validProductId) productId = validProductId;
+    } else {
+      // New line: it must be a real current catalog item. Never trust unitPrice/title from Flutter.
+      if (!validProductId || !product) throw httpError(400, 'لا يمكن إضافة صنف جديد غير موجود في المنيو الحالية');
+      const variants = Array.isArray(product.variants) ? product.variants : [];
+      const variant = selectedVariant ? variants.find(v => String(v.name) === selectedVariant) : null;
+      if (selectedVariant && variants.length && !variant) throw httpError(400, `الحجم "${selectedVariant}" غير موجود للصنف ${product.title}`);
+      title = cleanString(product.title, 180);
+      unitPrice = Math.max(0, money(variant ? variant.price : product.price));
+      productId = product._id;
+    }
+
+    if (!title) throw httpError(400, 'اسم الصنف مطلوب');
+    result.push({
+      ...(productId ? { productId } : {}),
+      title,
+      selectedVariant,
+      unitPrice,
+      quantity,
+      lineTotal: money(unitPrice * quantity),
+      notes
+    });
+  }
+  return result;
+}
+
+function normalizeStoredItems(items) {
+  return (Array.isArray(items) ? items : []).map(item => {
+    const raw = item?.toObject ? item.toObject() : item;
+    const unitPrice = Math.max(0, money(raw?.unitPrice));
+    const quantity = Math.max(1, Math.min(999, Math.trunc(Number(raw?.quantity || 1))));
+    return {
+      ...(mongoose.Types.ObjectId.isValid(raw?.productId) ? { productId: raw.productId } : {}),
+      title: cleanString(raw?.title, 180),
+      selectedVariant: cleanString(raw?.selectedVariant, 80),
+      unitPrice,
+      quantity,
+      lineTotal: money(unitPrice * quantity),
+      notes: cleanString(raw?.notes, 300)
+    };
+  }).filter(i => i.title);
+}
+
+async function updateInvoiceFromAdmin(current, body) {
+  const status = hasOwn(body, 'status') ? cleanString(body.status, 40) : current.status;
+  if (!ORDER_STATUSES.includes(status)) throw httpError(400, 'حالة غير صحيحة');
+
+  const itemsChanged = hasOwn(body, 'items');
+  const safeItems = itemsChanged ? await buildAdminInvoiceItems(current, body.items) : normalizeStoredItems(current.items);
+  if (!safeItems.length && status !== 'cancelled') throw httpError(400, 'يجب أن تحتوي الفاتورة على صنف واحد على الأقل، أو يتم إلغاؤها');
+
+  const customerName = hasOwn(body, 'customerName') ? cleanString(body.customerName, 120) : cleanString(current.customerName, 120);
+  const customerPhone = hasOwn(body, 'customerPhone') ? cleanString(body.customerPhone, 50) : cleanString(current.customerPhone, 50);
+  if (!customerName || !customerPhone) throw httpError(400, 'اسم العميل ورقم الهاتف مطلوبان');
+
+  const fulfillment = hasOwn(body, 'fulfillment')
+    ? (body.fulfillment === 'pickup' ? 'pickup' : 'delivery')
+    : (current.fulfillment === 'pickup' ? 'pickup' : 'delivery');
+
+  const subtotal = money(safeItems.reduce((sum, item) => sum + money(item.lineTotal), 0));
+  let deliveryFee = hasOwn(body, 'deliveryFee') ? Number(body.deliveryFee) : Number(current.deliveryFee || 0);
+  if (!Number.isFinite(deliveryFee) || deliveryFee < 0) throw httpError(400, 'رسوم التوصيل غير صحيحة');
+  deliveryFee = fulfillment === 'pickup' || safeItems.length === 0 ? 0 : money(deliveryFee);
+
+  const existingDiscount = currentDiscountState(current, subtotal);
+  let discountType;
+  let discountValue;
+  if (hasOwn(body, 'discountType') || hasOwn(body, 'discountValue')) {
+    discountType = hasOwn(body, 'discountType') ? cleanString(body.discountType, 20) : existingDiscount.discountType;
+    discountValue = hasOwn(body, 'discountValue') ? Number(body.discountValue) : existingDiscount.discountValue;
+  } else if (hasOwn(body, 'discount')) {
+    // Legacy clients used `discount` as a fixed amount.
+    discountType = Number(body.discount || 0) > 0 ? 'value' : 'none';
+    discountValue = Number(body.discount || 0);
+  } else {
+    discountType = existingDiscount.discountType;
+    discountValue = existingDiscount.discountValue;
+  }
+  if (!DISCOUNT_TYPES.includes(discountType)) throw httpError(400, 'نوع الخصم غير صحيح');
+  if (!Number.isFinite(Number(discountValue)) || Number(discountValue) < 0) throw httpError(400, 'قيمة الخصم غير صحيحة');
+
+  const discount = safeItems.length === 0
+    ? { discountType: 'none', discountValue: 0, discountAmount: 0 }
+    : calculateDiscountStrict(discountType, discountValue, subtotal);
+  const total = money(subtotal - discount.discountAmount + deliveryFee);
+  if (total < 0) throw httpError(400, 'إجمالي الفاتورة لا يمكن أن يكون أقل من صفر');
+
+  return {
+    update: {
+      customerName,
+      customerPhone,
+      customerAddress: hasOwn(body, 'customerAddress') ? cleanString(body.customerAddress, 300) : cleanString(current.customerAddress, 300),
+      area: fulfillment === 'delivery' ? (hasOwn(body, 'area') ? cleanString(body.area, 120) : cleanString(current.area, 120)) : '',
+      fulfillment,
+      items: safeItems,
+      notes: hasOwn(body, 'notes') ? cleanString(body.notes, 700) : cleanString(current.notes, 700),
+      subtotal,
+      deliveryFee,
+      discountType: discount.discountType,
+      discountValue: discount.discountValue,
+      discountAmount: discount.discountAmount,
+      discount: discount.discountAmount,
+      total,
+      status,
+      updatedAt: new Date()
+    },
+    changes: {
+      items: itemsChanged,
+      discount: hasOwn(body, 'discountType') || hasOwn(body, 'discountValue') || hasOwn(body, 'discount'),
+      deliveryFee: hasOwn(body, 'deliveryFee'),
+      status: hasOwn(body, 'status') && body.status !== current.status
+    }
+  };
+}
+
+async function saveAdminInvoiceUpdate(current, body, username) {
+  const { update, changes } = await updateInvoiceFromAdmin(current, body);
+  const doc = await Order.findByIdAndUpdate(current._id, { $set: update }, { new: true, runValidators: true });
+  if (!doc) throw httpError(404, 'الفاتورة غير موجودة');
+  await logActivity('invoice_update', doc.orderNumber, username);
+  if (changes.items) await logActivity('invoice_items_update', doc.orderNumber, username);
+  if (changes.discount) await logActivity('invoice_discount_update', doc.orderNumber, username);
+  if (changes.deliveryFee) await logActivity('invoice_delivery_fee_update', doc.orderNumber, username);
+  if (changes.status) await logActivity('order_status', `${doc.orderNumber} -> ${doc.status}`, username);
+  return doc;
+}
 
 const reviewSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
@@ -804,46 +1140,171 @@ app.patch('/api/reviews/:id/moderate', auth, api(async (req,res)=>{
 app.delete('/api/reviews/:id', auth, api(async(req,res)=>{const doc=await Review.findByIdAndDelete(req.params.id);if(!doc)return res.status(404).json({error:'الرأي غير موجود'});await logActivity('review_delete',doc.name,req.user.username);res.json({ok:true});}));
 
 app.post('/api/orders', api(async (req, res) => {
+  // Public website checkout keeps the original strict catalog/availability rules.
+  // Discount fields sent by the client are intentionally ignored here.
   const items = Array.isArray(req.body.items) ? req.body.items : [];
-  if (!cleanString(req.body.customerName, 120) || !cleanString(req.body.customerPhone, 50) || items.length === 0) return res.status(400).json({ error: 'بيانات العميل والطلب مطلوبة' });
+  if (!cleanString(req.body.customerName, 120) || !cleanString(req.body.customerPhone, 50) || items.length === 0) {
+    return res.status(400).json({ error: 'بيانات العميل والطلب مطلوبة' });
+  }
+
   const ids = items.map(i => i.productId).filter(id => mongoose.Types.ObjectId.isValid(id));
   const products = await Product.find({ _id: { $in: ids }, isHidden: false }).lean();
-  const map = new Map(products.map(p => [String(p._id), p]));
+  const map = new Map(products.map(product => [String(product._id), product]));
   const safeItems = [];
+
   for (const item of items) {
-    const product = map.get(String(item.productId)); if (!product || !product.isAvailable) continue;
+    const product = map.get(String(item.productId));
+    if (!product || !product.isAvailable) continue;
+
     const variantName = cleanString(item.selectedVariant, 80);
-    const variant = product.variants.find(v => v.name === variantName);
-    const unitPrice = Number(variant ? variant.price : product.price);
-    const quantity = Math.max(1, Math.min(99, Number(item.quantity || 1)));
-    safeItems.push({ productId: product._id, title: product.title, selectedVariant: variant?.name || '', unitPrice, quantity, lineTotal: unitPrice * quantity, notes: cleanString(item.notes, 300) });
+    const variants = Array.isArray(product.variants) ? product.variants : [];
+    const variant = variantName ? variants.find(v => String(v.name) === variantName) : null;
+    if (variantName && variants.length && !variant) continue;
+
+    const unitPrice = Math.max(0, money(variant ? variant.price : product.price));
+    const quantityRaw = Number(item.quantity || 1);
+    const quantity = Math.max(1, Math.min(99, Number.isFinite(quantityRaw) ? Math.trunc(quantityRaw) : 1));
+    safeItems.push({
+      productId: product._id,
+      title: product.title,
+      selectedVariant: variant?.name || '',
+      unitPrice,
+      quantity,
+      lineTotal: money(unitPrice * quantity),
+      notes: cleanString(item.notes, 300)
+    });
   }
+
   if (!safeItems.length) return res.status(400).json({ error: 'لا توجد أصناف متاحة في الطلب' });
+
   const settings = await getSettings();
-  const subtotal = safeItems.reduce((sum, i) => sum + i.lineTotal, 0);
+  const subtotal = money(safeItems.reduce((sum, item) => sum + item.lineTotal, 0));
   const fulfillment = req.body.fulfillment === 'pickup' ? 'pickup' : 'delivery';
   if (fulfillment === 'delivery' && settings.deliveryEnabled === false) return res.status(400).json({ error: 'التوصيل غير متاح حاليًا' });
   if (fulfillment === 'pickup' && settings.pickupEnabled === false) return res.status(400).json({ error: 'الاستلام من المكان غير متاح حاليًا' });
+
   let selectedArea = null;
-  if (fulfillment === 'delivery' && mongoose.Types.ObjectId.isValid(req.body.areaId)) selectedArea = await DeliveryArea.findOne({ _id: req.body.areaId, isActive: true }).lean();
-  const deliveryFee = fulfillment === 'delivery' && settings.deliveryEnabled ? Number(selectedArea?.fee ?? settings.deliveryFee ?? 0) : 0;
+  if (fulfillment === 'delivery' && mongoose.Types.ObjectId.isValid(req.body.areaId)) {
+    selectedArea = await DeliveryArea.findOne({ _id: req.body.areaId, isActive: true }).lean();
+  }
+  const deliveryFee = fulfillment === 'delivery' && settings.deliveryEnabled
+    ? Math.max(0, money(selectedArea?.fee ?? settings.deliveryFee ?? 0))
+    : 0;
   const minimumOrder = Math.max(Number(settings.minimumOrder || 0), Number(selectedArea?.minimumOrder || 0));
   if (minimumOrder > 0 && subtotal < minimumOrder) return res.status(400).json({ error: `الحد الأدنى للطلب ${minimumOrder} ${settings.currency}` });
+
   const areaName = selectedArea?.name || cleanString(req.body.area, 120);
   const orderNumber = `MH-${Date.now().toString().slice(-8)}-${crypto.randomInt(10, 99)}`;
-  const doc = await Order.create({ orderNumber, customerName: cleanString(req.body.customerName, 120), customerPhone: cleanString(req.body.customerPhone, 50), customerAddress: cleanString(req.body.customerAddress, 300), area: areaName, notes: cleanString(req.body.notes, 700), fulfillment, items: safeItems, subtotal, deliveryFee, total: subtotal + deliveryFee });
+  const doc = await Order.create({
+    orderNumber,
+    customerName: cleanString(req.body.customerName, 120),
+    customerPhone: cleanString(req.body.customerPhone, 50),
+    customerAddress: cleanString(req.body.customerAddress, 300),
+    area: areaName,
+    notes: cleanString(req.body.notes, 700),
+    fulfillment,
+    items: safeItems,
+    subtotal,
+    deliveryFee,
+    discountType: 'none',
+    discountValue: 0,
+    discountAmount: 0,
+    discount: 0,
+    total: money(subtotal + deliveryFee)
+  });
+
   await logActivity('order_create', orderNumber, 'customer');
-  res.status(201).json({ orderNumber: doc.orderNumber, subtotal: doc.subtotal, deliveryFee: doc.deliveryFee, total: doc.total, status: doc.status, whatsappNumber: settings.whatsappNumber, currency: settings.currency });
+  const output = serializeOrder(doc);
+  res.status(201).json({
+    orderNumber: output.orderNumber,
+    subtotal: output.subtotal,
+    deliveryFee: output.deliveryFee,
+    discountType: output.discountType,
+    discountValue: output.discountValue,
+    discountAmount: output.discountAmount,
+    discount: output.discount,
+    total: output.total,
+    status: output.status,
+    whatsappNumber: settings.whatsappNumber,
+    currency: settings.currency
+  });
 }));
+
+// Backward-compatible authenticated order listing. It still returns an array.
+// Optional filters: status, date, from, to, search/q, customer, orderNumber, limit, page.
 app.get('/api/orders', auth, api(async (req, res) => {
-  const filter = {}; if (req.query.status) filter.status = req.query.status;
-  res.json(await Order.find(filter).sort({ createdAt: -1 }).limit(250).lean());
+  const filter = buildInvoiceFilter(req.query);
+  const limitRaw = Number(req.query.limit || 250);
+  const pageRaw = Number(req.query.page || 1);
+  const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(5000, Math.trunc(limitRaw))) : 250;
+  const page = Number.isFinite(pageRaw) ? Math.max(1, Math.trunc(pageRaw)) : 1;
+  const docs = await Order.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean();
+  res.json(docs.map(serializeOrder));
 }));
+
+// Rich paginated endpoint for the Flutter/Admin invoice screen.
+app.get('/api/admin/invoices', auth, api(async (req, res) => {
+  const filter = buildInvoiceFilter(req.query);
+  const limitRaw = Number(req.query.limit || 100);
+  const pageRaw = Number(req.query.page || 1);
+  const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(500, Math.trunc(limitRaw))) : 100;
+  const page = Number.isFinite(pageRaw) ? Math.max(1, Math.trunc(pageRaw)) : 1;
+  const [total, docs] = await Promise.all([
+    Order.countDocuments(filter),
+    Order.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).lean()
+  ]);
+  res.json({ page, limit, total, pages: Math.max(1, Math.ceil(total / limit)), rows: docs.map(serializeOrder) });
+}));
+
+app.get('/api/admin/invoices/:id', auth, api(async (req, res) => {
+  const doc = await Order.findById(req.params.id).lean();
+  if (!doc) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
+  res.json(serializeOrder(doc));
+}));
+
+// Keep the historical endpoint working. Status-only updates retain their old behavior.
+// Older Admin clients that already send invoice fields are also still supported.
 app.put('/api/orders/:id', auth, api(async (req, res) => {
-  const allowedStatuses = ['new','contacted','preparing','out_for_delivery','delivered','cancelled'];
-  if (!allowedStatuses.includes(req.body.status)) return res.status(400).json({ error: 'حالة غير صحيحة' });
-  const doc = await Order.findByIdAndUpdate(req.params.id, { status: req.body.status, updatedAt: new Date() }, { new: true }); if (!doc) return res.status(404).json({ error: 'الطلب غير موجود' }); await logActivity('order_status', `${doc.orderNumber} -> ${req.body.status}`, req.user.username); res.json(doc);
+  const current = await Order.findById(req.params.id).lean();
+  if (!current) return res.status(404).json({ error: 'الطلب غير موجود' });
+
+  const editFields = [
+    'items','customerName','customerPhone','customerAddress','area','notes','fulfillment',
+    'deliveryFee','discount','discountType','discountValue'
+  ];
+  const isInvoiceEdit = editFields.some(key => hasOwn(req.body, key));
+
+  if (!isInvoiceEdit) {
+    if (!hasOwn(req.body, 'status')) return res.status(400).json({ error: 'لا توجد تعديلات للحفظ' });
+    const status = cleanString(req.body.status, 40);
+    if (!ORDER_STATUSES.includes(status)) return res.status(400).json({ error: 'حالة غير صحيحة' });
+    const doc = await Order.findByIdAndUpdate(req.params.id, { $set: { status, updatedAt: new Date() } }, { new: true, runValidators: true });
+    await logActivity('order_status', `${doc.orderNumber} -> ${status}`, req.user.username);
+    return res.json(serializeOrder(doc));
+  }
+
+  const doc = await saveAdminInvoiceUpdate(current, req.body, req.user.username);
+  res.json(serializeOrder(doc));
 }));
+
+// Preferred full invoice editing endpoint for the new Flutter application.
+app.put('/api/admin/orders/:id', auth, api(async (req, res) => {
+  const current = await Order.findById(req.params.id).lean();
+  if (!current) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
+  const doc = await saveAdminInvoiceUpdate(current, req.body || {}, req.user.username);
+  res.json(serializeOrder(doc));
+}));
+
+async function deleteInvoice(req, res) {
+  const doc = await Order.findByIdAndDelete(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'الفاتورة غير موجودة' });
+  await logActivity('invoice_delete', doc.orderNumber, req.user.username);
+  res.json({ ok: true, orderNumber: doc.orderNumber });
+}
+
+// Keep the old delete route for compatibility and provide the explicit Admin route too.
+app.delete('/api/orders/:id', auth, api(deleteInvoice));
+app.delete('/api/admin/orders/:id', auth, api(deleteInvoice));
 
 app.post('/api/analytics/track', api(async (req, res) => {
   const type = cleanString(req.body.type, 40); const key = cleanString(req.body.key, 120);
@@ -872,34 +1333,55 @@ app.get('/api/reports/summary', auth, api(async (req, res) => {
   const since = new Date(Date.now() - days * 86400000);
   const analytics = await Analytics.findOne({ key: 'main' }).lean() || {};
   const orders = await Order.find({ createdAt: { $gte: since } }).sort({ createdAt: -1 }).lean();
-  const validOrders = orders.filter(o => o.status !== 'cancelled');
-  const revenue = validOrders.reduce((sum,o)=>sum+Number(o.total||0),0);
-  const deliveredRevenue = orders.filter(o=>o.status==='delivered').reduce((sum,o)=>sum+Number(o.total||0),0);
+  const validOrders = orders.filter(order => order.status !== 'cancelled');
+  const deliveredOrders = orders.filter(order => order.status === 'delivered');
+
+  const subtotalRevenue = money(validOrders.reduce((sum, order) => sum + Number(order.subtotal || 0), 0));
+  const totalDiscounts = money(validOrders.reduce((sum, order) => sum + currentDiscountState(order, order.subtotal).discountAmount, 0));
+  const deliveryRevenue = money(validOrders.reduce((sum, order) => sum + Number(order.deliveryFee || 0), 0));
+  const netRevenue = money(validOrders.reduce((sum, order) => sum + Number(order.total || 0), 0));
+  const deliveredRevenue = money(deliveredOrders.reduce((sum, order) => sum + Number(order.total || 0), 0));
+
   const statuses = {};
-  for (const o of orders) statuses[o.status] = (statuses[o.status]||0)+1;
+  for (const order of orders) statuses[order.status] = (statuses[order.status] || 0) + 1;
+
   const itemMap = new Map();
-  for (const o of validOrders) for (const i of (o.items||[])) {
-    const name = i.title || 'بدون اسم';
-    const cur = itemMap.get(name) || { title:name, quantity:0, revenue:0 };
-    cur.quantity += Number(i.quantity||0); cur.revenue += Number(i.lineTotal||0); itemMap.set(name,cur);
+  for (const order of validOrders) {
+    for (const item of (order.items || [])) {
+      const name = item.title || 'بدون اسم';
+      const cur = itemMap.get(name) || { title: name, quantity: 0, revenue: 0 };
+      cur.quantity += Number(item.quantity || 0);
+      cur.revenue = money(cur.revenue + Number(item.lineTotal || 0));
+      itemMap.set(name, cur);
+    }
   }
-  const topOrdered = [...itemMap.values()].sort((a,b)=>b.quantity-a.quantity).slice(0,12);
-  const topMap = obj => Object.entries(obj||{}).map(([title,count])=>({title, count:Number(count||0)})).sort((a,b)=>b.count-a.count).slice(0,12);
-  const dailyVisits = Object.entries(analytics.dailyVisits||{}).filter(([date])=>new Date(date+'T00:00:00Z')>=since).sort(([a],[b])=>a.localeCompare(b)).map(([date,count])=>({date,count:Number(count||0)}));
+
+  const topOrdered = [...itemMap.values()].sort((a,b) => b.quantity - a.quantity).slice(0,12);
+  const topMap = obj => Object.entries(obj || {}).map(([title,count]) => ({ title, count:Number(count || 0) })).sort((a,b) => b.count - a.count).slice(0,12);
+  const dailyVisits = Object.entries(analytics.dailyVisits || {})
+    .filter(([date]) => new Date(date + 'T00:00:00Z') >= since)
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([date,count]) => ({ date, count:Number(count || 0) }));
+
   res.json({
     periodDays: days,
     generatedAt: new Date().toISOString(),
     metrics: {
-      totalVisits: Number(analytics.totalVisits||0),
-      periodVisits: dailyVisits.reduce((sum,d)=>sum+d.count,0),
-      cartAdds: Object.values(analytics.cartAdds||{}).reduce((sum,n)=>sum+Number(n||0),0),
-      orderStarts: Number(analytics.orderStarts||0),
-      whatsappOpens: Number(analytics.whatsappOpens||0),
+      totalVisits: Number(analytics.totalVisits || 0),
+      periodVisits: dailyVisits.reduce((sum,d) => sum + d.count, 0),
+      cartAdds: Object.values(analytics.cartAdds || {}).reduce((sum,n) => sum + Number(n || 0), 0),
+      orderStarts: Number(analytics.orderStarts || 0),
+      whatsappOpens: Number(analytics.whatsappOpens || 0),
       orders: orders.length,
       validOrders: validOrders.length,
-      revenue,
+      subtotalRevenue,
+      totalDiscounts,
+      deliveryRevenue,
+      netRevenue,
+      // Compatibility aliases used by the current Admin dashboard.
+      revenue: netRevenue,
       deliveredRevenue,
-      averageOrder: validOrders.length ? revenue/validOrders.length : 0
+      averageOrder: validOrders.length ? money(netRevenue / validOrders.length) : 0
     },
     statuses,
     topViews: topMap(analytics.productViews),
@@ -944,10 +1426,11 @@ app.get('/api/reports/full', auth, api(async (req, res) => {
 
   const validOrders = orders.filter(o => o.status !== 'cancelled');
   const deliveredOrders = orders.filter(o => o.status === 'delivered');
-  const revenue = validOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
-  const deliveredRevenue = deliveredOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
-  const subtotal = validOrders.reduce((sum, o) => sum + Number(o.subtotal || 0), 0);
-  const deliveryFees = validOrders.reduce((sum, o) => sum + Number(o.deliveryFee || 0), 0);
+  const subtotalRevenue = money(validOrders.reduce((sum, o) => sum + Number(o.subtotal || 0), 0));
+  const totalDiscounts = money(validOrders.reduce((sum, o) => sum + currentDiscountState(o, o.subtotal).discountAmount, 0));
+  const deliveryRevenue = money(validOrders.reduce((sum, o) => sum + Number(o.deliveryFee || 0), 0));
+  const netRevenue = money(validOrders.reduce((sum, o) => sum + Number(o.total || 0), 0));
+  const deliveredRevenue = money(deliveredOrders.reduce((sum, o) => sum + Number(o.total || 0), 0));
   const totalItems = validOrders.reduce((sum, o) => sum + (o.items || []).reduce((s, i) => s + Number(i.quantity || 0), 0), 0);
 
   const statuses = {};
@@ -961,9 +1444,17 @@ app.get('/api/reports/full', auth, api(async (req, res) => {
     statuses[o.status] = (statuses[o.status] || 0) + 1;
     fulfillment[o.fulfillment === 'pickup' ? 'pickup' : 'delivery'] += 1;
     const day = new Date(o.createdAt).toISOString().slice(0, 10);
-    const d = dailyMap.get(day) || { date: day, orders: 0, validOrders: 0, revenue: 0 };
+    const d = dailyMap.get(day) || { date: day, orders: 0, validOrders: 0, subtotalRevenue: 0, totalDiscounts: 0, deliveryRevenue: 0, netRevenue: 0, revenue: 0 };
     d.orders += 1;
-    if (o.status !== 'cancelled') { d.validOrders += 1; d.revenue += Number(o.total || 0); }
+    if (o.status !== 'cancelled') {
+      const orderDiscount = currentDiscountState(o, o.subtotal).discountAmount;
+      d.validOrders += 1;
+      d.subtotalRevenue = money(d.subtotalRevenue + Number(o.subtotal || 0));
+      d.totalDiscounts = money(d.totalDiscounts + orderDiscount);
+      d.deliveryRevenue = money(d.deliveryRevenue + Number(o.deliveryFee || 0));
+      d.netRevenue = money(d.netRevenue + Number(o.total || 0));
+      d.revenue = d.netRevenue;
+    }
     dailyMap.set(day, d);
 
     const phone = String(o.customerPhone || '').trim();
@@ -1026,11 +1517,16 @@ app.get('/api/reports/full', auth, api(async (req, res) => {
       validOrders: validOrders.length,
       cancelledOrders: orders.length - validOrders.length,
       deliveredOrders: deliveredOrders.length,
-      revenue,
+      subtotalRevenue,
+      totalDiscounts,
+      deliveryRevenue,
+      netRevenue,
+      // Compatibility aliases for the existing Admin UI.
+      revenue: netRevenue,
       deliveredRevenue,
-      subtotal,
-      deliveryFees,
-      averageOrder: validOrders.length ? revenue / validOrders.length : 0,
+      subtotal: subtotalRevenue,
+      deliveryFees: deliveryRevenue,
+      averageOrder: validOrders.length ? money(netRevenue / validOrders.length) : 0,
       totalItems,
       uniqueCustomers: customers.length,
     },
@@ -1040,7 +1536,7 @@ app.get('/api/reports/full', auth, api(async (req, res) => {
     itemSales: topItems,
     customers,
     areas,
-    orders,
+    orders: orders.map(serializeOrder),
     catalog: {
       products: products.map(p => ({ _id:p._id, title:p.title, category:p.category, price:p.price, oldPrice:p.oldPrice, isAvailable:p.isAvailable, availableToday:p.availableToday, featured:p.featured, isHidden:p.isHidden, createdAt:p.createdAt, updatedAt:p.updatedAt })),
       categories: categories.map(c => ({ _id:c._id, name:c.name, isActive:c.isActive, sortOrder:c.sortOrder, createdAt:c.createdAt })),
@@ -1098,7 +1594,7 @@ app.get('/api/pos/sync', posAuth, api(async (req,res)=>{
     Product.find({ updatedAt:{ $gt:since } }).sort({updatedAt:1}).lean(),
     Order.find({ updatedAt:{ $gt:since } }).sort({updatedAt:1}).lean()
   ]);
-  res.json({ apiVersion:'v1', serverTime:new Date().toISOString(), since:since.toISOString(), products, orders });
+  res.json({ apiVersion:'v1', serverTime:new Date().toISOString(), since:since.toISOString(), products, orders: orders.map(serializeOrder) });
 }));
 app.patch('/api/pos/orders/:id/status', posAuth, api(async (req,res)=>{
   const allowedStatuses=['new','contacted','preparing','out_for_delivery','delivered','cancelled'];
@@ -1106,12 +1602,13 @@ app.patch('/api/pos/orders/:id/status', posAuth, api(async (req,res)=>{
   const doc=await Order.findByIdAndUpdate(req.params.id,{status:req.body.status,updatedAt:new Date()},{new:true});
   if(!doc) return res.status(404).json({error:'Order not found'});
   await logActivity('pos_order_status', `${doc.orderNumber} -> ${req.body.status}`, 'pos');
-  res.json(doc);
+  res.json(serializeOrder(doc));
 }));
 
 app.get('/api/backup', auth, api(async (req, res) => {
   const [products,categories,gallery,services,settings,orders,reviews,analytics,deliveryAreas,activityLogs] = await Promise.all([Product.find().lean(),Category.find().lean(),Gallery.find().lean(),Service.find().lean(),Settings.find().lean(),Order.find().lean(),Review.find().lean(),Analytics.find().lean(),DeliveryArea.find().lean(),ActivityLog.find().sort({createdAt:-1}).limit(1000).lean()]);
-  res.json({ version: 5, exportedAt: new Date().toISOString(), data: { products,categories,gallery,services,settings,orders,reviews,analytics,deliveryAreas,activityLogs } });
+  const normalizedOrders = orders.map(serializeOrder);
+  res.json({ version: 6, exportedAt: new Date().toISOString(), data: { products,categories,gallery,services,settings,orders:normalizedOrders,reviews,analytics,deliveryAreas,activityLogs } });
 }));
 
 app.post('/api/restore', auth, api(async (req, res) => {
